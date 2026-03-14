@@ -1,12 +1,12 @@
-# Caroli AI
+# Recalo
 
-Caroli AI is an Android application that uses OpenAI's Vision capabilities to analyze photos of your meals and automatically extract nutritional information (Calories, Protein, Fat, Carbohydrates) and syncs it with Google Health Connect.
+Recalo is an Android application that uses OpenAI's Vision capabilities to analyze photos of your meals and automatically extract nutritional information (Calories, Protein, Fat, Carbohydrates) and syncs it with Google Health Connect.
 
 > Note: This app is currently in its initial release phase. It is primarily intended for developers and early adopters who can build the project themselves.
 
 ## Demo
 
-![Caroli AI Demo](./apps/android/docs/images/demo.gif)
+![Recalo Demo](./apps/android/docs/images/demo.gif)
 
 *AI analyzes your meal and syncs to Health Connect in seconds. (Processing time is sped up for the demo)*
 

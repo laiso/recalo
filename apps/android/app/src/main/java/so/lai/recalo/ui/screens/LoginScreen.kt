@@ -52,7 +52,7 @@ fun LoginScreen(viewModel: LoginViewModel, onLoginSuccess: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text(text = "Caroli AI Login", style = MaterialTheme.typography.headlineMedium)
+        Text(text = "Recalo Login", style = MaterialTheme.typography.headlineMedium)
         Spacer(modifier = Modifier.height(8.dp))
         Text(text = "Enter your OpenAI API Key to start", style = MaterialTheme.typography.bodyMedium)
 

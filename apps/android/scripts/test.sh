@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Test execution script for Caroli AI Android app
+# Test execution script for Recalo Android app
 # Usage: ./scripts/test.sh [options]
 
 set -e
@@ -16,7 +16,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}  Caroli AI - Test Runner${NC}"
+echo -e "${GREEN}  Recalo - Test Runner${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 
