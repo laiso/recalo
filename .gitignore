@@ -1,0 +1,15 @@
+node_modules/
+.bun/
+.env
+apps/api/.env
+.DS_Store
+*.log
+coverage/
+apps/android/build/
+apps/android/local.properties
+tmp/
+.claude/skills/
+build/
+.claude/settings.local*.json
+apps/android/.idea/
+\n.claude/

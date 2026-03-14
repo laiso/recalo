@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="512" height="512">
+    <!-- Store/Preview App Icon Background (White) -->
+    <rect width="108" height="108" fill="#FFFFFF" />
+    
+    <g transform="translate(54, 54) scale(0.92) translate(-54, -54)">
+        <!-- Camera Island (Green) -->
+        <rect x="24" y="24" width="60" height="60" rx="18" fill="#1B8A5D" />
+        
+        <!-- Lens Ring (White Cutout) -->
+        <circle cx="54" cy="54" r="18" fill="none" stroke="#FFFFFF" stroke-width="6" />
+        
+        <!-- Flash / Sensor (White) -->
+        <circle cx="36" cy="36" r="4" fill="#FFFFFF" />
+        
+        <!-- Sparkle embedded in Lens ring (overlaps) -->
+        <path fill="#FFFFFF" d="M54,46 Q54,54 62,54 Q54,54 54,62 Q54,54 46,54 Q54,54 54,46 Z" />
+    </g>
+</svg>

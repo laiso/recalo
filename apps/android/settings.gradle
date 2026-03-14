@@ -1,0 +1,2 @@
+rootProject.name = "caroli-ai"
+include ':app'
