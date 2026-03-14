@@ -1,44 +1,44 @@
-# テスト実行ガイド
+# Test Execution Guide
 
-## ローカルでのテスト実行
+## Local Test Execution
 
-### スクリプトを使用（推奨）
+### Using Script (Recommended)
 
 ```bash
-# すべてのチェックを実行
+# Run all checks
 ./scripts/test.sh
 
-# または
+# Or
 ./scripts/test.sh --all
 
-# テストのみ実行
+# Run tests only
 ./scripts/test.sh --tests
 
-# Lint のみ実行
+# Run Lint only
 ./scripts/test.sh --lint
 
-# ktlint のみ実行
+# Run ktlint only
 ./scripts/test.sh --ktlint
 
-# 複数実行
+# Run multiple
 ./scripts/test.sh --tests --lint
 
-# ヘルプ表示
+# Show help
 ./scripts/test.sh --help
 ```
 
-### Gradle コマンド直接使用
+### Direct Gradle Commands
 
 ```bash
 cd apps/android
 
-# 全ユニットテスト
+# All unit tests
 ./gradlew testDevDebugUnitTest
 
-# 特定のテストクラス
+# Specific test class
 ./gradlew testDevDebugUnitTest --tests "so.lai.recalo.data.repository.MealRepositoryPortionRatioTest"
 
-# 特定のパッケージ
+# Specific package
 ./gradlew testDevDebugUnitTest --tests "so.lai.recalo.data.repository.*"
 
 # Lint
@@ -47,50 +47,50 @@ cd apps/android
 # ktlint
 ./gradlew ktlintCheck
 
-# ktlint 自動修正
+# ktlint auto-fix
 ./gradlew ktlintFormat
 ```
 
-### テストレポート
+### Test Reports
 
-テスト実行後、以下のレポートが生成されます：
+After running tests, the following reports are generated:
 
-- HTML レポート: apps/android/app/build/reports/tests/testDevDebugUnitTest/index.html
-- Lint レポート: apps/android/app/build/reports/lint-results.html
+- HTML Report: apps/android/app/build/reports/tests/testDevDebugUnitTest/index.html
+- Lint Report: apps/android/app/build/reports/lint-results.html
 
-## GitHub Actions でのテスト実行
+## Running Tests with GitHub Actions
 
-### 自動実行
+### Automatic Execution
 
-GitHub Actions は以下のタイミングで自動実行されます：
+GitHub Actions runs automatically on:
 
-- main ブランチへのプッシュ
-- main ブランチへの PR
+- Push to main branch
+- PR to main branch
 
-### 手動実行
+### Manual Execution
 
-1. GitHub リポジトリの Actions タブを開く
-2. Android CI ワークフローを選択
-3. Run workflow ボタンをクリック
-4. ブランチを選択して実行
+1. Open the Actions tab in the GitHub repository.
+2. Select the Android CI workflow.
+3. Click the Run workflow button.
+4. Select the branch and run.
 
-### ワークフローログの確認
+### Checking Workflow Logs
 
-1. Actions タブ -> 実行中のワークフローを選択
-2. 各ジョブ（test, lint, ktlint）をクリック
-3. ステップごとのログを確認
+1. Actions tab -> Select a running workflow.
+2. Click each job (test, lint, ktlint).
+3. Check logs for each step.
 
-### アーティファクト
+### Artifacts
 
-テスト失敗時、以下のアーティファクトが生成されます：
+When tests fail, the following artifacts are generated:
 
-- test-results: テスト結果
-- test-report: HTML テストレポート
-- lint-reports: Lint レポート
+- test-results: Test results
+- test-report: HTML test report
+- lint-reports: Lint reports
 
-## テストの追加方法
+## How to Add Tests
 
-### 新しいテストクラスの作成
+### Creating a New Test Class
 
 ```kotlin
 package so.lai.recalo.data.repository
@@ -139,7 +139,7 @@ class YourFeatureTest {
 }
 ```
 
-### テストファイルの配置
+### Test File Placement
 
 ```
 apps/android/app/src/test/java/so/lai/recalo/
@@ -155,101 +155,101 @@ apps/android/app/src/test/java/so/lai/recalo/
     └── HealthConnectManagerTest.kt
 ```
 
-## CI/CD パイプライン
+## CI/CD Pipeline
 
-### テストジョブ
+### Test Job
 
-- 環境: Ubuntu latest
+- Environment: Ubuntu latest
 - JDK: 17 (Temurin)
-- タイムアウト: 30 分
-- キャッシュ: Gradle キャッシュ有効
+- Timeout: 30 minutes
+- Cache: Gradle cache enabled
 
-### ステップ
+### Steps
 
-1. コードのチェックアウト
-2. JDK 17 のセットアップ
-3. gradlew の実行権限付与
-4. ユニットテスト実行
-5. テスト結果のアップロード（常に）
-6. テストレポートのアップロード（失敗時のみ）
+1. Checkout code
+2. Setup JDK 17
+3. Grant execute permission to gradlew
+4. Run unit tests
+5. Upload test results (always)
+6. Upload test report (only on failure)
 
-## トラブルシューティング
+## Troubleshooting
 
-### テストが失敗する場合
+### If Tests Fail
 
-1. ログを確認:
+1. Check logs:
    ```bash
    ./gradlew testDevDebugUnitTest --info
    ```
 
-2. 特定のテストのみ実行:
+2. Run only specific test:
    ```bash
    ./gradlew testDevDebugUnitTest --tests "so.lai.recalo.YourTest"
    ```
 
-3. ビルドキャッシュをクリア:
+3. Clear build cache:
    ```bash
    ./gradlew clean testDevDebugUnitTest
    ```
 
-### Lint エラー
+### Lint Errors
 
-1. エラー詳細を確認:
+1. Check error details:
    ```bash
    ./gradlew lint
    cat apps/android/app/build/reports/lint-results.html
    ```
 
-2. 一般的な修正:
-   - 未使用の import を削除
-   - 未使用の変数を削除
-   - メソッドが長すぎる場合は分割
+2. Common fixes:
+   - Remove unused imports
+   - Remove unused variables
+   - Split long methods
 
-### ktlint エラー
+### ktlint Errors
 
-1. 自動修正を試行:
+1. Try auto-fix:
    ```bash
    ./gradlew ktlintFormat
    ```
 
-2. 手動修正:
-   - 行長 100 文字以内に収める
-   - import を辞書順に並べる
-   - 末尾の空白を削除
+2. Manual fixes:
+   - Keep line length under 100 characters
+   - Sort imports alphabetically
+   - Remove trailing whitespace
 
-## ローカルで GitHub Actions を再現
+## Replicating GitHub Actions Locally
 
-act を使用してローカルで GitHub Actions を実行できます：
+You can use [act](https://github.com/nektos/act) to run GitHub Actions locally:
 
 ```bash
-# act のインストール（macOS）
+# Install act (macOS)
 brew install act
 
-# 全ワークフローを実行
+# Run all workflows
 act
 
-# 特定のワークフローを実行
+# Run specific workflow
 act -j test
 
-# 詳細ログ
+# Verbose logs
 act -v
 ```
 
-## ベストプラクティス
+## Best Practices
 
-1. PR 前にローカルで全テストを実行
+1. Run all tests locally before PR
    ```bash
    ./scripts/test.sh --all
    ```
 
-2. テストカバレッジを維持
-   - 新しい機能には必ずテストを追加
-   - リファクタリング時は既存テストが通ることを確認
+2. Maintain test coverage
+   - Always add tests for new features
+   - Ensure existing tests pass during refactoring
 
-3. CI の green を維持
-   - PR が red の場合はマージしない
-   - 失敗したテストはすぐに修正
+3. Maintain green CI
+   - Do not merge PR if CI is red
+   - Fix failed tests immediately
 
-4. テストの命名規則
-   - 機能_条件_期待結果 形式
-   - 例：updatePortionRatio_shouldScaleItemCalories
+4. Test naming convention
+   - `Feature_Condition_ExpectedResult` format
+   - Example: `updatePortionRatio_shouldScaleItemCalories`

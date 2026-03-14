@@ -5,30 +5,30 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- 全ての端末 (完全な円形マスク等) で安全に表示されるよう0.92倍にスケール -->
+    <!-- Scaled to 0.92x to ensure safe display on all devices (e.g., circular masks) -->
     <group
         android:pivotX="54"
         android:pivotY="54"
         android:scaleX="0.92"
         android:scaleY="0.92">
         
-        <!-- Camera Island (背景となる角丸のベース) -->
+        <!-- Camera Island (rounded corner base) -->
         <path
             android:fillColor="#1B8A5D"
             android:pathData="M 42,24 L 66,24 A 18,18 0 0,1 84,42 L 84,66 A 18,18 0 0,1 66,84 L 42,84 A 18,18 0 0,1 24,66 L 24,42 A 18,18 0 0,1 42,24 Z" />
             
-        <!-- Lens Ring (白抜きのカメラレンズ) -->
+        <!-- Lens Ring (white camera lens) -->
         <path
             android:strokeColor="#FFFFFF"
             android:strokeWidth="6"
             android:pathData="M 54,36 A 18,18 0 1,1 54,72 A 18,18 0 1,1 54,36 Z" />
             
-        <!-- Flash / Sensor (フラッシュ用センサー) -->
+        <!-- Flash / Sensor -->
         <path
             android:fillColor="#FFFFFF"
             android:pathData="M 36,32 A 4,4 0 1,1 36,40 A 4,4 0 1,1 36,32 Z" />
             
-        <!-- Sparkle (AIの魔法を示す星) -->
+        <!-- Sparkle (AI magic star) -->
         <path
             android:fillColor="#FFFFFF"
             android:pathData="M54,46 Q54,54 62,54 Q54,54 54,62 Q54,54 46,54 Q54,54 54,46 Z" />

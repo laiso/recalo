@@ -20,10 +20,10 @@ import so.lai.recalo.data.local.entity.NutrientEntity
 import so.lai.recalo.data.local.entity.NutritionResultEntity
 
 /**
- * Health Connect 統合テスト
+ * Health Connect integration tests
  *
- * このテストは実際の Android デバイスまたはエミュレーターで実行する必要があります。
- * Health Connect がインストールされ、適切な権限が付与されていることを前提としています。
+ * This test must be run on a physical Android device or emulator.
+ * It assumes that Health Connect is installed and appropriate permissions have been granted.
  */
 @RunWith(AndroidJUnit4::class)
 class HealthConnectIntegrationTest {
@@ -41,7 +41,7 @@ class HealthConnectIntegrationTest {
 
     @After
     fun tearDown() {
-        // テスト後に保存されたレコードをクリーンアップ
+        // Clean up records saved after the test
         runBlocking {
             try {
                 val now = Instant.now()
@@ -52,11 +52,11 @@ class HealthConnectIntegrationTest {
                         timeRangeFilter = TimeRangeFilter.between(oneDayAgo, now)
                     )
                 )
-                // テストレコードを削除（最後の 1 分以内のレコード）
+                // Delete test records (records within the last hour)
                 val testRecords = response.records.filter { record ->
                     val recordTime = record.startTime
                     val timeDiff = java.time.Duration.between(recordTime, now).seconds
-                    timeDiff < 3600 // 1 時間以内のレコードをテスト対象とみなす
+                    timeDiff < 3600 // Consider records within 1 hour as test targets
                 }
                 if (testRecords.isNotEmpty()) {
                     println("Cleaning up ${testRecords.size} test records")
@@ -68,21 +68,21 @@ class HealthConnectIntegrationTest {
     }
 
     /**
-     * Health Connect が利用可能かチェックするテスト
+     * Test to check if Health Connect is available
      */
     @Test
     fun testHealthConnectAvailability() {
         val isAvailable = healthConnectManager.isAvailable()
         println("Health Connect available: $isAvailable")
 
-        // Health Connect が利用可能または PROVIDER_UPDATE_REQUIRED の場合
+        // If Health Connect is available or PROVIDER_UPDATE_REQUIRED
         val status = HealthConnectClient.getSdkStatus(
             context,
             healthConnectManager.providerPackageName
         )
         println("Health Connect status: $status")
 
-        // SDK が利用可能またはプロバイダーの更新が必要な場合
+        // If SDK is available or provider update is required
         assertTrue(
             "Health Connect should be available or need provider update",
             status == HealthConnectClient.SDK_AVAILABLE ||
@@ -91,14 +91,14 @@ class HealthConnectIntegrationTest {
     }
 
     /**
-     * 権限チェックのテスト
+     * Test for permission checks
      */
     @Test
     fun testHasAllPermissions() = runBlocking {
         val hasPermissions = healthConnectManager.hasAllPermissions()
         println("Has all permissions: $hasPermissions")
 
-        // 権限が granted されているか確認
+        // Check if permissions are granted
         val grantedPermissions = client.permissionController.getGrantedPermissions()
         val requiredPermissions = healthConnectManager.permissions
 
@@ -111,23 +111,23 @@ class HealthConnectIntegrationTest {
     }
 
     /**
-     * 栄養情報の書き込みテスト
+     * Test for writing nutrition information
      */
     @Test
     fun testWriteNutrition() = runBlocking {
-        // Health Connect が利用できない場合はスキップ
+        // Skip if Health Connect is not available
         if (!healthConnectManager.isAvailable()) {
             println("Health Connect not available, skipping write test")
             return@runBlocking
         }
 
-        // 権限がない場合はスキップ
+        // Skip if permissions are not granted
         if (!healthConnectManager.hasAllPermissions()) {
             println("Health Connect permissions not granted, skipping write test")
             return@runBlocking
         }
 
-        // テストデータの作成
+        // Create test data
         val mealId = UUID.randomUUID().toString()
         val testMeal = MealLogEntity(
             id = mealId,
@@ -156,22 +156,22 @@ class HealthConnectIntegrationTest {
 
         println("Writing nutrition data: ${testNutrition.calories} kcal")
 
-        // 書き込み実行
+        // Execute write
         val result = healthConnectManager.writeNutrition(testMeal, testNutrition)
 
-        // 結果の検証
+        // Verify results
         if (result.isSuccess) {
             println("Write succeeded")
 
-            // 読み込みで確認
+            // Verify by reading
             val records = healthConnectManager.readRecentNutrition()
             println("Read ${records.size} records from Health Connect")
 
-            // 直近のレコードを検索
+            // Search for recent records
             val now = Instant.now()
             val matchingRecord = records.firstOrNull { record ->
                 val timeDiff = java.time.Duration.between(record.startTime, now)
-                timeDiff.toMinutes() < 5 // 5 分以内のレコード
+                timeDiff.toMinutes() < 5 // Records within 5 minutes
             }
 
             if (matchingRecord != null) {
@@ -193,7 +193,7 @@ class HealthConnectIntegrationTest {
     }
 
     /**
-     * 栄養情報の読み込みテスト
+     * Test for reading nutrition information
      */
     @Test
     fun testReadNutrition() = runBlocking {
@@ -207,7 +207,7 @@ class HealthConnectIntegrationTest {
             return@runBlocking
         }
 
-        // まずテストデータを書き込む
+        // Write test data first
         val mealId = UUID.randomUUID().toString()
         val testMeal = MealLogEntity(
             id = mealId,
@@ -230,7 +230,7 @@ class HealthConnectIntegrationTest {
             confidence = 0.8
         )
 
-        // 書き込み
+        // Write
         val writeResult = healthConnectManager.writeNutrition(testMeal, testNutrition)
 
         if (writeResult.isFailure) {
@@ -238,14 +238,14 @@ class HealthConnectIntegrationTest {
             return@runBlocking
         }
 
-        // 少し待ってから読み込み
+        // Wait a bit before reading
         kotlinx.coroutines.delay(1000)
 
-        // 読み込み
+        // Read
         val records = healthConnectManager.readRecentNutrition()
         println("Read ${records.size} records")
 
-        // 300 kcal のレコードが見つかるはず
+        // Should find record with 300 kcal
         val foundRecord = records.firstOrNull { record ->
             (record.energy?.inKilocalories ?: 0.0) == 300.0
         }
@@ -255,7 +255,7 @@ class HealthConnectIntegrationTest {
     }
 
     /**
-     * 完全な書き込み・読み込みフローのテスト
+     * Test for complete write/read flow
      */
     @Test
     fun testCompleteWriteReadFlow() = runBlocking {
@@ -269,7 +269,7 @@ class HealthConnectIntegrationTest {
             return@runBlocking
         }
 
-        // テストデータ
+        // Test data
         val expectedCalories = 550.0
         val expectedProtein = 35.0
         val expectedCarbs = 45.0
@@ -298,21 +298,21 @@ class HealthConnectIntegrationTest {
             confidence = 0.85
         )
 
-        // Step 1: 書き込み
+        // Step 1: Write
         println("=== Step 1: Writing nutrition data ===")
         val writeResult = healthConnectManager.writeNutrition(testMeal, testNutrition)
 
         assertTrue("Write should succeed", writeResult.isSuccess)
 
-        // Step 2: 少し待機
+        // Step 2: Wait a bit
         println("=== Step 2: Waiting for data to be persisted ===")
         kotlinx.coroutines.delay(500)
 
-        // Step 3: 読み込み
+        // Step 3: Read
         println("=== Step 3: Reading nutrition data ===")
         val records = healthConnectManager.readRecentNutrition()
 
-        // Step 4: 検証
+        // Step 4: Verify
         println("=== Step 4: Verifying data ===")
         val matchingRecord = records.firstOrNull { record ->
             val caloriesMatch = (record.energy?.inKilocalories ?: 0.0) == expectedCalories
@@ -339,7 +339,7 @@ class HealthConnectIntegrationTest {
     }
 
     /**
-     * 権限がない場合の書き込みエラー処理テスト
+     * Test for write error handling when permissions are missing
      */
     @Test
     fun testWriteWithoutPermissions() = runBlocking {
@@ -347,8 +347,8 @@ class HealthConnectIntegrationTest {
             return@runBlocking
         }
 
-        // 意図的に権限のない状態で書き込みを試みる
-        // （実際にはテスト実行時に権限を付与しない必要がある）
+        // Intentionally attempt to write without permissions
+        // (In practice, permissions must not be granted when running this test)
         val hasPermissions = healthConnectManager.hasAllPermissions()
 
         if (hasPermissions) {
@@ -375,7 +375,7 @@ class HealthConnectIntegrationTest {
 
         val result = healthConnectManager.writeNutrition(testMeal, testNutrition)
 
-        // 権限がない場合はエラーになるはず
+        // Should fail without permissions
         assertTrue("Write should fail without permissions", result.isFailure)
     }
 }

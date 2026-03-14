@@ -23,7 +23,7 @@ class LoginViewModel(
 
     fun login(onSuccess: () -> Unit) {
         if (openAIKey.isBlank()) {
-            errorMessage = "OpenAI API キーを入力してください"
+            errorMessage = "Please enter your OpenAI API Key"
             return
         }
 
@@ -34,7 +34,7 @@ class LoginViewModel(
                 sessionManager.saveOpenAIKey(openAIKey)
                 onSuccess()
             } catch (e: Exception) {
-                errorMessage = e.message ?: "エラーが発生しました"
+                errorMessage = e.message ?: "An error occurred"
             } finally {
                 isLoading = false
             }
@@ -54,7 +54,7 @@ fun LoginScreen(viewModel: LoginViewModel, onLoginSuccess: () -> Unit) {
     ) {
         Text(text = "Caroli AI Login", style = MaterialTheme.typography.headlineMedium)
         Spacer(modifier = Modifier.height(8.dp))
-        Text(text = "OpenAI API キーを入力して開始", style = MaterialTheme.typography.bodyMedium)
+        Text(text = "Enter your OpenAI API Key to start", style = MaterialTheme.typography.bodyMedium)
 
         Spacer(modifier = Modifier.height(32.dp))
 
@@ -85,7 +85,7 @@ fun LoginScreen(viewModel: LoginViewModel, onLoginSuccess: () -> Unit) {
                     color = MaterialTheme.colorScheme.onPrimary
                 )
             } else {
-                Text("ログイン")
+                Text("Login")
             }
         }
     }

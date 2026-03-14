@@ -341,7 +341,7 @@ class HomeViewModel(
                     healthConnectMessage = "Saved to Health Connect."
                     Log.d(logTag, "=== Health Connect write SUCCESS ===")
 
-                    // 書き込み後に読み込み検証
+                    // Verify write after saving
                     Log.d(logTag, "Verifying write by reading recent data...")
                     val records = manager.readRecentNutrition()
                     Log.d(logTag, "Found ${records.size} records in Health Connect")
@@ -349,7 +349,7 @@ class HomeViewModel(
                         Log.d(logTag, "Latest record: ${record.energy?.inKilocalories} kcal")
                     }
 
-                    // 成功したらpendingデータをクリア
+                    // Clear pending data on success
                     pendingHealthConnectData = null
                 } else {
                     val message = result.exceptionOrNull()?.message ?: "Failed to save."
@@ -421,7 +421,6 @@ fun HomeScreen(
     var cameraImageUri by remember { mutableStateOf<Uri?>(null) }
     var showEditDialog by remember { mutableStateOf<String?>(null) }
 
-    // カメラ権限のチェック
     var hasCameraPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
@@ -433,7 +432,6 @@ fun HomeScreen(
     ) { isGranted ->
         hasCameraPermission = isGranted
         if (isGranted) {
-            // 権限が付与されたのでカメラ起動
             showSourceSelection = true
         }
     }
@@ -496,7 +494,6 @@ fun HomeScreen(
         }
     }
 
-    // 選択された日付の合計値と食事リストを計算
     val targetMealsAndSummary by remember(viewModel.meals, targetDate, currentDayStartHour) {
         derivedStateOf {
             val startOfTargetDate = targetDate.atTime(currentDayStartHour, 0).atZone(
@@ -564,7 +561,6 @@ fun HomeScreen(
                         if (sessionManager.getOpenAIKey().isNullOrBlank()) {
                             showSettingsDialog = true
                         } else {
-                            // カメラ権限をチェック
                             if (hasCameraPermission) {
                                 showSourceSelection = true
                             } else {
@@ -1075,7 +1071,7 @@ private fun IdleScreen(
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(bottom = 80.dp) // ここで余白を確保
+                contentPadding = PaddingValues(bottom = 80.dp)
             ) {
                 items(targetMeals) { mealWithNutrition ->
                     MealCard(
@@ -1223,7 +1219,7 @@ private fun MealCard(
                     nutrition?.let { result ->
                         if (result.portionRatio != 1.0) {
                             Text(
-                                text = "${result.portionRatio}×",
+                                text = "${result.portionRatio} x",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(start = 8.dp)
@@ -1372,7 +1368,7 @@ private fun DetailScreen(
                             onClick = {
                                 onEditClick?.invoke(result.mealLogId)
                             },
-                            label = { Text("${result.portionRatio}×") },
+                            label = { Text("${result.portionRatio} x") },
                             trailingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.KeyboardArrowDown,
@@ -1695,7 +1691,7 @@ private fun ResultScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = nutrition?.title ?: "解析結果",
+                        text = nutrition?.title ?: "Analysis Result",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.weight(1f)
@@ -1707,7 +1703,7 @@ private fun ResultScreen(
                             onClick = {
                                 result.mealLogId.let { mealId -> onEditClick?.invoke(mealId) }
                             },
-                            label = { Text("${result.portionRatio}×") },
+                            label = { Text("${result.portionRatio} x") },
                             trailingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.KeyboardArrowDown,
@@ -1721,7 +1717,7 @@ private fun ResultScreen(
                     if (hasHealthConnectPermissions == false) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = "Health Connect の権限が必要です",
+                            contentDescription = "Health Connect permissions required",
                             tint = MaterialTheme.colorScheme.error,
                             modifier = Modifier.size(20.dp)
                         )

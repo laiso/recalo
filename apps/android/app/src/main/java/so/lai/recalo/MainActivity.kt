@@ -13,7 +13,7 @@ import androidx.compose.ui.graphics.Color
 import so.lai.recalo.data.api.SessionManager
 import so.lai.recalo.ui.screens.HomeScreen
 
-// 緑ベースのカラースキーム
+// Green-based color scheme
 private val GreenColorScheme = lightColorScheme(
     primary = Color(0xFF1B8A5D),
     onPrimary = Color.White,

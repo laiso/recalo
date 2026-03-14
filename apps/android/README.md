@@ -1,27 +1,27 @@
 
-## テスト実行
+## Test Execution
 
-### クイックスタート
+### Quick Start
 
 ```bash
-# すべてのチェックを実行（推奨）
+# Run all checks (recommended)
 ./scripts/test.sh
 
-# テストのみ実行
+# Run tests only
 ./gradlew testDevDebugUnitTest
 
-# 特定のテスト
+# Run specific test
 ./gradlew testDevDebugUnitTest --tests "so.lai.recalo.data.repository.MealRepositoryPortionRatioTest"
 ```
 
-詳細は docs/TESTING.md を参照してください。
+For more details, see docs/TESTING.md.
 
 ## CI/CD
 
-GitHub Actions が自動でテストを実行します：
+GitHub Actions automatically runs tests:
 
-- ユニットテスト
+- Unit Tests
 - Lint
 - ktlint
 
-詳細は [.github/workflows/android-ci.yml](../.github/workflows/android-ci.yml) を参照してください。
+For more details, see [.github/workflows/android-ci.yml](../.github/workflows/android-ci.yml).

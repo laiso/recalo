@@ -72,7 +72,7 @@ fun MealCard(
                     nutrition?.let { result ->
                         if (result.portionRatio != 1.0) {
                             androidx.compose.material3.Text(
-                                text = "${result.portionRatio}×",
+                                text = "${result.portionRatio} x",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(start = 8.dp)

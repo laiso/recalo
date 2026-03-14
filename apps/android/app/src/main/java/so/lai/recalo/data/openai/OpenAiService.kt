@@ -13,7 +13,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
 /**
- * OpenAI Responses API を使用した栄養分析サービス
+ * Nutrition analysis service using OpenAI Responses API
  * https://platform.openai.com/docs/api-reference/responses
  */
 class OpenAiService(
@@ -79,7 +79,6 @@ class OpenAiService(
 
             val openAiResponse = gson.fromJson(responseBody, ResponsesApiResponse::class.java)
 
-            // output配列の中から type == "message" のものを探し、その中の type == "output_text" の text を取得する
             val content = openAiResponse.output
                 ?.firstOrNull { it.type == "message" }
                 ?.content

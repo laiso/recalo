@@ -16,9 +16,9 @@ import so.lai.recalo.data.local.entity.MealLogEntity
 import so.lai.recalo.data.local.model.MealWithNutrition
 
 /**
- * MealRepository の回帰テスト
+ * Regression tests for MealRepository
  *
- * 問題：#2026-03-07 CASCADE DELETE による栄養データ損失
+ * Issue: #2026-03-07 Nutrition data loss due to CASCADE DELETE
  */
 @RunWith(RobolectricTestRunner::class)
 class MealRepositoryRegressionTest {
@@ -43,36 +43,35 @@ class MealRepositoryRegressionTest {
     }
 
     /**
-     * [回帰テスト] 栄養分析完了後にステータス更新しても栄養データが保持される
+     * [Regression Test] Nutrition data is preserved even after updating status after analysis completes
      *
-     * 再現ステップ:
-     * 1. 食事画像をアップロード
-     * 2. 栄養分析が成功
-     * 3. ステータスが analyzing -> completed に更新
+     * Reproduction steps:
+     * 1. Upload a meal image
+     * 2. Nutrition analysis succeeds
+     * 3. Status updates from analyzing to completed
      *
-     * 期待結果:
-     * - completed 状態でも calories が null にならない
+     * Expected result:
+     * - calories should not be null even in the completed state
      */
     @Test
     fun `REGRESSION nutrition data should persist after analysis completes`() = runTest {
-        // これは DAO レベルのテストなので、Repository を介してのフロー検証は
-        // 実際の API コールが必要なため DAO テストでカバー済み
+        // Since this is a DAO-level test, flow verification via Repository
+        // is covered in DAO tests because actual API calls are required
 
-        // DAO レベルでの検証:
-        // MealDaoTest.kt の
+        // Verification at the DAO level:
+        // Refer to MealDaoTest.kt's
         // "REGRESSION nutrition data should be preserved when updating meal status from analyzing to completed"
-        // を参照
-        assertTrue(true) // プレースホルダー（実際のテストは DAO で実施）
+        assertTrue(true) // Placeholder (actual test is performed in DAO)
     }
 
     /**
-     * [回帰テスト] getAllMealsWithNutrition で栄養データが正しく取得される
+     * [Regression Test] Nutrition data is correctly retrieved in getAllMealsWithNutrition
      */
     @Test
     fun `REGRESSION getAllMealsWithNutrition should return nutrition data correctly`() = runTest {
         val dao = database.mealDao()
 
-        // データ準備
+        // Prepare data
         val mealId = "test-meal-1"
         val meal = MealLogEntity(
             id = mealId,
@@ -91,7 +90,7 @@ class MealRepositoryRegressionTest {
             )
         )
 
-        // Flow から取得
+        // Get from Flow
         val meals: List<MealWithNutrition> = dao.getAllMealsWithNutrition().first()
 
         assertEquals(1, meals.size)
@@ -99,7 +98,7 @@ class MealRepositoryRegressionTest {
         assertEquals(mealId, result.meal.id)
         assertEquals("completed", result.meal.analysisStatus)
 
-        // 栄養データが取得できていることを確認
+        // Verify that nutrition data is retrieved
         val nutrition = result.nutritionResult
         assertNotNull("Nutrition result should not be null", nutrition)
         assertEquals(500, nutrition?.calories)
@@ -107,7 +106,7 @@ class MealRepositoryRegressionTest {
     }
 
     /**
-     * [回帰テスト] 複数 meals の場合でも各 nutrition データが正しく紐付いている
+     * [Regression Test] Each nutrition data is correctly linked even with multiple meals
      */
     @Test
     fun `REGRESSION multiple meals should each have correct nutrition data`() = runTest {
@@ -163,7 +162,7 @@ class MealRepositoryRegressionTest {
 
         assertEquals(3, meals.size)
 
-        // 順序を確認（capturedAt DESC）
+        // Verify order (capturedAt DESC)
         assertEquals("meal-3", meals[0].meal.id)
         assertNull(meals[0].nutritionResult)
 
@@ -175,14 +174,14 @@ class MealRepositoryRegressionTest {
     }
 
     /**
-     * [回帰テスト] deleteMeal 時に栄養データも一緒に削除される（CASCADE の正常な動作）
+     * [Regression Test] Nutrition data is also deleted when deleteMeal is called (normal CASCADE operation)
      */
     @Test
     fun `REGRESSION deleteMeal should cascade delete nutrition data`() = runTest {
         val dao = database.mealDao()
         val mealId = "meal-to-delete"
 
-        // データ準備
+        // Prepare data
         dao.insertMeal(
             MealLogEntity(
                 id = mealId,
@@ -201,14 +200,14 @@ class MealRepositoryRegressionTest {
             )
         )
 
-        // 削除前に存在することを確認
+        // Verify existence before deletion
         val beforeDelete = dao.getAllMealsWithNutrition().first()
         assertEquals(1, beforeDelete.size)
 
-        // 削除実行
+        // Execute deletion
         dao.deleteMealById(mealId)
 
-        // 削除後に存在しないことを確認
+        // Verify non-existence after deletion
         val afterDelete = dao.getAllMealsWithNutrition().first()
         assertTrue("Meal and nutrition should be deleted", afterDelete.isEmpty())
     }

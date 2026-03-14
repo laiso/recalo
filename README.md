@@ -23,7 +23,7 @@ Caroli AI is an Android application that uses OpenAI's Vision capabilities to an
 
 * Android Studio (Koala or newer recommended)
 * An Android device or emulator running Android 14+ (API 34+) for Health Connect compatibility.
-* An OpenAI API Key.
+* An OpenAI API Key. [Create one here](https://platform.openai.com/api-keys)
 
 ### Build Instructions
 

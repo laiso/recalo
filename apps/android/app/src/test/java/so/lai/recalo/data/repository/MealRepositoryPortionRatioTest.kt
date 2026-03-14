@@ -18,12 +18,12 @@ import so.lai.recalo.data.local.entity.NutritionResultEntity
 import java.util.UUID
 
 /**
- * 倍率調整機能のテスト
+ * Tests for portion ratio adjustment feature
  *
- * 機能概要：
- * - 食事全体の分量を倍率で調整（0.5×, 1.0×, 1.5×, 2.0×）
- * - 倍率変更時にカロリー・栄養素・数量を自動再計算
- * - 過去の倍率から新しい倍率に正しく計算し直す
+ * Feature overview:
+ * - Adjust the portion of the entire meal by a ratio (0.5x, 1.0x, 1.5x, 2.0x)
+ * - Automatically recalculate calories, nutrients, and quantities when the ratio is changed
+ * - Correctly recalculate from a previous ratio to a new ratio
  */
 @RunWith(RobolectricTestRunner::class)
 class MealRepositoryPortionRatioTest {

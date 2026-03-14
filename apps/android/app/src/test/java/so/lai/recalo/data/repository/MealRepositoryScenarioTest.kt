@@ -17,9 +17,9 @@ import so.lai.recalo.data.local.entity.MealLogEntity
 import so.lai.recalo.data.local.entity.NutritionResultEntity
 
 /**
- * MealRepository シナリオテスト
+ * MealRepository Scenario tests
  *
- * 登録→解析→キャンセルのフローを検証
+ * Verify the flow from registration -> analysis -> cancellation
  */
 @RunWith(RobolectricTestRunner::class)
 class MealRepositoryScenarioTest {
@@ -49,7 +49,7 @@ class MealRepositoryScenarioTest {
         val capturedAt = System.currentTimeMillis()
 
         // ============================================================
-        // Step 1: 食事登録 (analyzing 状態)
+        // Step 1: Meal registration (analyzing state)
         // ============================================================
         val analyzingMeal = MealLogEntity(
             id = mealId,
@@ -60,13 +60,13 @@ class MealRepositoryScenarioTest {
         )
         database.mealDao().insertMeal(analyzingMeal)
 
-        // 登録されたことを確認
+        // Verify registration
         val step1Meal = database.mealDao().getMealById(mealId)
         assertNotNull("Step 1: Meal should be registered", step1Meal)
         assertEquals("analyzing", step1Meal?.analysisStatus)
 
         // ============================================================
-        // Step 2: 栄養分析完了 (completed 状態に更新)
+        // Step 2: Nutrition analysis complete (update to completed state)
         // ============================================================
         val nutritionResult = NutritionResultEntity(
             id = UUID.randomUUID().toString(),
@@ -83,24 +83,24 @@ class MealRepositoryScenarioTest {
         )
         database.mealDao().updateMeal(completedMeal)
 
-        // 分析完了状態を確認
+        // Verify analysis complete state
         val step2Result = database.mealDao().getMealWithNutritionById(mealId)
         assertNotNull("Step 2: MealWithNutrition should exist", step2Result)
         assertEquals("completed", step2Result?.meal?.analysisStatus)
         assertEquals(550, step2Result?.nutritionResult?.calories)
         assertEquals(0.88, step2Result?.nutritionResult?.confidence!!, 0.01)
 
-        // Flow でも確認
+        // Verify via Flow
         val allMeals = database.mealDao().getAllMealsWithNutrition().first()
         assertEquals(1, allMeals.size)
         assertEquals(mealId, allMeals.first().meal.id)
 
         // ============================================================
-        // Step 3: キャンセル (削除)
+        // Step 3: Cancellation (deletion)
         // ============================================================
         repository.deleteMeal(mealId)
 
-        // 削除されたことを確認
+        // Verify deletion
         val step3Meal = database.mealDao().getMealById(mealId)
         assertNull("Step 3: Meal should be deleted", step3Meal)
 
@@ -115,7 +115,7 @@ class MealRepositoryScenarioTest {
     fun `SCENARIO register meal analyzing cancel delete before analysis complete`() = runTest {
         val mealId = UUID.randomUUID().toString()
 
-        // Step 1: 食事登録 (analyzing 状態)
+        // Step 1: Meal registration (analyzing state)
         val analyzingMeal = MealLogEntity(
             id = mealId,
             imageUrl = null,
@@ -125,10 +125,10 @@ class MealRepositoryScenarioTest {
         )
         database.mealDao().insertMeal(analyzingMeal)
 
-        // Step 2: 解析前にキャンセル
+        // Step 2: Cancel before analysis completes
         repository.deleteMeal(mealId)
 
-        // 削除されたことを確認
+        // Verify deletion
         val deletedMeal = database.mealDao().getMealById(mealId)
         assertNull("Meal should be deleted before analysis", deletedMeal)
     }
@@ -187,24 +187,24 @@ class MealRepositoryScenarioTest {
             )
         )
 
-        // 初期状態: 3 件
+        // Initial state: 3 items
         val initialMeals = database.mealDao().getAllMealsWithNutrition().first()
         assertEquals(3, initialMeals.size)
 
-        // Meal 2 をキャンセル（削除）
+        // Cancel (delete) Meal 2
         repository.deleteMeal(meal2Id)
 
-        // 残りは 2 件
+        // 2 items remaining
         val remainingMeals = database.mealDao().getAllMealsWithNutrition().first()
         assertEquals(2, remainingMeals.size)
 
-        // Meal 1 と Meal 3 が残っていることを確認
+        // Verify that Meal 1 and Meal 3 remain
         val remainingIds = remainingMeals.map { it.meal.id }
         assertTrue("Meal 1 should remain", remainingIds.contains(meal1Id))
         assertTrue("Meal 3 should remain", remainingIds.contains(meal3Id))
         assertFalse("Meal 2 should be deleted", remainingIds.contains(meal2Id))
 
-        // Meal 2 の栄養データも削除されていることを確認
+        // Verify that Meal 2's nutrition data is also deleted
         val meal2Result = database.mealDao().getMealWithNutritionById(meal2Id)
         assertNull("Meal 2 should be cascade deleted", meal2Result)
     }

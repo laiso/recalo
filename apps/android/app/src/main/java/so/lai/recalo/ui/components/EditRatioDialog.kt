@@ -51,7 +51,7 @@ fun EditRatioDialog(
                             },
                             label = {
                                 Text(
-                                    text = "$ratio×",
+                                    text = "$ratio x",
                                     maxLines = 1,
                                     softWrap = false
                                 )

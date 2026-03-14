@@ -21,12 +21,6 @@ import so.lai.recalo.data.local.entity.MealLogEntity
 import so.lai.recalo.data.local.entity.NutritionResultEntity
 import so.lai.recalo.data.repository.MealRepository
 
-/**
- * ResultScreen 表示時のキャンセルボブントテスト
- *
- * 問題：キャンセルボタンを押しても DB から削除されず、
- * Home 画面に表示されたままだった
- */
 @RunWith(RobolectricTestRunner::class)
 class ResultScreenCancelTest {
 
@@ -46,7 +40,7 @@ class ResultScreenCancelTest {
         sessionManager = SessionManager(context)
         viewModel = HomeViewModel(sessionManager)
 
-        // リポジトリを直接セット
+        // Set repository directly via reflection
         val field = HomeViewModel::class.java.getDeclaredField("mealRepository")
         field.isAccessible = true
         field.set(viewModel, repository)
@@ -60,14 +54,11 @@ class ResultScreenCancelTest {
         sessionManager.clear()
     }
 
-    /**
-     * [回帰テスト] ResultScreen でキャンセル→食事が削除される
-     */
     @Test
     fun cancel_button_should_delete_meal_from_database() = runTest {
         val mealId = UUID.randomUUID().toString()
 
-        // 食事と栄養データを登録（解析完了状態）
+        // Register meal and nutrition data
         database.mealDao().insertMeal(
             MealLogEntity(
                 id = mealId,
@@ -87,22 +78,22 @@ class ResultScreenCancelTest {
             )
         )
 
-        // Flow 更新を待つ
+        // Wait for Flow update
         for (i in 0..10) {
             if (viewModel.meals.isNotEmpty()) break
             kotlinx.coroutines.delay(100)
         }
 
-        // 登録確認
+        // Verify registration
         assertEquals(1, database.mealDao().getMealById(mealId)?.let { 1 } ?: 0)
         assertEquals(1, database.mealDao().getAllMealsWithNutrition().first().size)
         assertNotNull(database.mealDao().getMealById(mealId))
 
-        // キャンセル実行（削除）
+        // Execute cancel (delete)
         val deleteJob = viewModel.deleteMeal(mealId, null)
         deleteJob.join()
 
-        // 削除確認
+        // Verify deletion
         assertEquals(
             "Meal should be deleted after cancel",
             0,
@@ -118,14 +109,11 @@ class ResultScreenCancelTest {
         )
     }
 
-    /**
-     * [回帰テスト] キャンセル後に Home 画面から消える
-     */
     @Test
     fun cancel_should_remove_meal_from_home_screen() = runTest {
         val mealId = "cancel-home-test"
 
-        // 食事登録
+        // Register meal
         database.mealDao().insertMeal(
             MealLogEntity(
                 id = mealId,
@@ -151,11 +139,11 @@ class ResultScreenCancelTest {
         assertEquals(1, database.mealDao().getMealById(mealId)?.let { 1 } ?: 0)
         assertEquals(1, database.mealDao().getAllMealsWithNutrition().first().size)
 
-        // キャンセル（削除）して完了を待つ
+        // Cancel (delete) and wait for completion
         val deleteJob = viewModel.deleteMeal(mealId, null)
         deleteJob.join()
 
-        // Home 画面から消えていることを確認
+        // Verify it disappeared from home screen
         assertTrue(
             "Meal should disappear from home screen after cancel",
             database.mealDao().getAllMealsWithNutrition().first().isEmpty()

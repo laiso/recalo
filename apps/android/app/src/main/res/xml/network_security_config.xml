@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Default: Only HTTPS allowed -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    
+    <!-- Explicitly trust OpenAI API domain -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">api.openai.com</domain>
+        <pin-set expiration="2027-01-01">
+            <!-- OpenAI certificate pinning (optional) -->
+        </pin-set>
+    </domain-config>
+</network-security-config>

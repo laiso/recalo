@@ -17,10 +17,10 @@ import so.lai.recalo.data.local.CaroliDatabase
 import so.lai.recalo.data.local.entity.MealLogEntity
 
 /**
- * 過去日付バグの回帰テスト
+ * Regression test for past date bug
  *
- * 問題：過去日付を選択して食事を投稿すると、当日の日付で保存されてしまう
- * 修正：選択した日付の capturedAt を uploadImage に渡すように修正
+ * Issue: When posting a meal after selecting a past date, it gets saved with today's date.
+ * Fix: Pass the capturedAt of the selected date to uploadImage.
  */
 @RunWith(RobolectricTestRunner::class)
 class PastDateCaptureTest {
@@ -38,7 +38,7 @@ class PastDateCaptureTest {
         sessionManager = SessionManager(context)
         viewModel = HomeViewModel(sessionManager)
 
-        // リポジトリを直接セット
+        // Set repository directly
         val repoField = HomeViewModel::class.java.getDeclaredField("mealRepository")
         repoField.isAccessible = true
         val repository = so.lai.recalo.data.repository.MealRepository(dao = database.mealDao())
@@ -53,27 +53,27 @@ class PastDateCaptureTest {
     }
 
     /**
-     * [回帰テスト] 過去日付でキャプチャした食事の capturedAt が正しく設定される
+     * [Regression Test] capturedAt is correctly set for meals captured with a past date
      */
     @Test
     fun capturedAt_should_be_set_to_selected_date_not_today() = runTest {
-        // 3 日前の日付を選択
+        // Select a date 3 days ago
         val selectedDate = LocalDate.now().minusDays(3)
-        val dayStartHour = 4 // 凌晨 4 点を日付の起点
+        val dayStartHour = 4 // 4 AM as the start of the day
 
-        // 選択日のタイムスタンプを計算（HomeScreen と同じロジック）
+        // Calculate timestamp for selected date (same logic as in HomeScreen)
         val capturedAt = selectedDate.atTime(dayStartHour, 0)
             .atZone(ZoneId.systemDefault())
             .toInstant()
             .toEpochMilli()
 
-        // 当日のタイムスタンプ
+        // Today's timestamp
         val todayTimestamp = System.currentTimeMillis()
 
-        // capturedAt が当日ではないことを確認
+        // Verify capturedAt is in the past
         assertTrue("capturedAt should be in the past", capturedAt < todayTimestamp)
 
-        // 過去の日付が MealLogEntity に設定されることを確認
+        // Verify past date is set in MealLogEntity
         val mealId = "past-date-test-meal"
         val meal = MealLogEntity(
             id = mealId,
@@ -85,7 +85,7 @@ class PastDateCaptureTest {
 
         database.mealDao().insertMeal(meal)
 
-        // DB に保存された capturedAt を確認
+        // Verify capturedAt saved in DB
         val savedMeal = database.mealDao().getMealById(mealId)
         assertNotNull("Meal should be saved", savedMeal)
         assertEquals(
@@ -94,42 +94,42 @@ class PastDateCaptureTest {
             savedMeal!!.capturedAt
         )
 
-        // capturedAt が当日のタイムスタンプではないことを確認
+        // Verify capturedAt is not today's timestamp
         assertNotEquals(
             "capturedAt should not be today's timestamp",
-            todayTimestamp / (24 * 60 * 60 * 1000), // 日付部分のみ比較
+            todayTimestamp / (24 * 60 * 60 * 1000), // Compare date part only
             savedMeal.capturedAt!! / (24 * 60 * 60 * 1000)
         )
     }
 
     /**
-     * [回帰テスト] 過去日付の食事が過去日付のフィルターに表示される
+     * [Regression Test] Meals with past dates appear in the past date filter
      */
     @Test
     fun past_date_meal_should_appear_on_selected_date() = runTest {
         val selectedDate = LocalDate.now().minusDays(5)
         val dayStartHour = 4
 
-        // 選択日の開始・終了タイムスタンプ
+        // Start/end timestamps for selected date
         val startOfSelectedDate = selectedDate.atTime(dayStartHour, 0)
             .atZone(ZoneId.systemDefault())
             .toInstant()
             .toEpochMilli()
         val endOfSelectedDate = startOfSelectedDate + (24 * 60 * 60 * 1000L)
 
-        // 過去日付の食事を登録
+        // Register a past date meal
         val pastMealId = "past-date-filter-test"
         database.mealDao().insertMeal(
             MealLogEntity(
                 id = pastMealId,
                 imageUrl = null,
-                capturedAt = startOfSelectedDate + (12 * 60 * 60 * 1000L), // 昼頃
+                capturedAt = startOfSelectedDate + (12 * 60 * 60 * 1000L), // Around noon
                 imagePath = "/path/meal.jpg",
                 analysisStatus = MealLogEntity.AnalysisStatus.COMPLETED
             )
         )
 
-        // 当日の食事も登録
+        // Register today's meal
         val today = LocalDate.now()
         val startOfToday = today.atTime(dayStartHour, 0)
             .atZone(ZoneId.systemDefault())
@@ -147,14 +147,14 @@ class PastDateCaptureTest {
             )
         )
 
-        // 過去日付のフィルターで取得
+        // Get with past date filter
         val mealsOnSelectedDate = database.mealDao().getAllMealsWithNutrition().first()
             .filter { (it.meal.capturedAt ?: 0L) in startOfSelectedDate until endOfSelectedDate }
 
         val mealsOnToday = database.mealDao().getAllMealsWithNutrition().first()
             .filter { (it.meal.capturedAt ?: 0L) in startOfToday until (startOfToday + 24 * 60 * 60 * 1000L) }
 
-        // 過去日付には過去の日付の食事のみが表示される
+        // Only past date meal should appear on past date
         assertEquals(
             "Only the past date meal should appear on selected date",
             1,
@@ -166,7 +166,7 @@ class PastDateCaptureTest {
             mealsOnSelectedDate[0].meal.id
         )
 
-        // 今日には今日の食事のみが表示される
+        // Only today's meal should appear today
         assertEquals(
             "Only today's meal should appear today",
             1,
@@ -180,7 +180,7 @@ class PastDateCaptureTest {
     }
 
     /**
-     * [回帰テスト] 1 週間前の日付でも正しく動作する
+     * [Regression Test] Works correctly even for a date from one week ago
      */
     @Test
     fun capturedAt_should_work_correctly_for_one_week_ago() = runTest {
@@ -206,7 +206,7 @@ class PastDateCaptureTest {
         val savedMeal = database.mealDao().getMealById(mealId)
         assertNotNull(savedMeal)
 
-        // capturedAt が 1 週間前であることを確認（±1 日の誤差を許容）
+        // Verify capturedAt is 1 week ago (allow +/- 1 day margin)
         val oneWeekAgoMillis = System.currentTimeMillis() - (7 * 24 * 60 * 60 * 1000L)
         val oneDayMillis = 24 * 60 * 60 * 1000L
         val savedDate = java.time.Instant.ofEpochMilli(savedMeal!!.capturedAt!!)

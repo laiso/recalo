@@ -16,11 +16,6 @@ import so.lai.recalo.data.local.CaroliDatabase
 import so.lai.recalo.data.local.entity.MealLogEntity
 import so.lai.recalo.data.local.entity.NutritionResultEntity
 
-/**
- * MealDao のユニットテスト
- *
- * Robolectric を使用して JVM 上で実行します
- */
 @RunWith(RobolectricTestRunner::class)
 class MealDaoTest {
 
@@ -234,28 +229,22 @@ class MealDaoTest {
     }
 
     // ============================================================
-    // 回帰テスト：CASCADE DELETE 問題 (#2026-03-07)
+    // REGRESSION TESTS: CASCADE DELETE issue (#2026-03-07)
     // ============================================================
-    // 問題：OnConflictStrategy.REPLACE で MealLogEntity を更新すると、
-    // Room が内部で DELETE -> INSERT を実行し、
-    // ForeignKey.CASCADE により NutritionResultEntity も削除されていた
+    // Problem: Updating MealLogEntity with OnConflictStrategy.REPLACE
+    // would trigger DELETE -> INSERT internally in Room,
+    // which deleted NutritionResultEntity due to ForeignKey.CASCADE.
     //
-    // 修正：updateMeal() を使用して UPDATE のみに変更
+    // Fix: Use updateMeal() to perform UPDATE only.
     // ============================================================
 
-    /**
-     * [回帰テスト] 食事ステータス更新時に栄養データが保持されることを確認
-     *
-     * 問題：status=analyzing では calories=450、status=completed で calories=null になった
-     * 原因：INSERT(REPLACE) による CASCADE DELETE
-     */
     @Test
     fun `REGRESSION nutrition data should be preserved when updating meal status from analyzing to completed`() = runTest {
         val mealId = UUID.randomUUID().toString()
         val expectedCalories = 450
         val expectedConfidence = 0.75
 
-        // Step 1: analyzing 状態で食事を作成
+        // Step 1: Create meal in analyzing state
         val analyzingMeal = MealLogEntity(
             id = mealId,
             imageUrl = null,
@@ -265,7 +254,7 @@ class MealDaoTest {
         )
         dao.insertMeal(analyzingMeal)
 
-        // Step 2: 栄養データを挿入
+        // Step 2: Insert nutrition result
         dao.insertNutritionResult(
             NutritionResultEntity(
                 id = UUID.randomUUID().toString(),
@@ -275,20 +264,20 @@ class MealDaoTest {
             )
         )
 
-        // Step 3: analyzing 状態で栄養データが取得できることを確認
+        // Step 3: Verify nutrition data is present in analyzing state
         val analyzingResult = dao.getLatestMealWithNutrition()
         assertNotNull("Analyzing state should have nutrition", analyzingResult)
         assertEquals("analyzing", analyzingResult?.meal?.analysisStatus)
         assertEquals(expectedCalories, analyzingResult?.nutritionResult?.calories)
 
-        // Step 4: ステータスを completed に更新（updateMeal を使用）
+        // Step 4: Update status to completed using updateMeal
         val completedMeal = analyzingMeal.copy(
             analysisStatus = "completed",
             analysisCompletedAt = System.currentTimeMillis()
         )
         dao.updateMeal(completedMeal)
 
-        // Step 5: completed 状態でも栄養データが保持されていることを確認
+        // Step 5: Verify nutrition data is preserved in completed state
         val completedResult = dao.getLatestMealWithNutrition()
         assertNotNull("Completed state should preserve nutrition", completedResult)
         assertEquals("completed", completedResult?.meal?.analysisStatus)
@@ -305,15 +294,12 @@ class MealDaoTest {
         )
     }
 
-    /**
-     * [回帰テスト] 複数回のステータス更新でも栄養データが保持されることを確認
-     */
     @Test
     fun `REGRESSION nutrition data should be preserved through multiple status updates`() = runTest {
         val mealId = UUID.randomUUID().toString()
         val expectedCalories = 600
 
-        // 初期食事作成
+        // Initial meal creation
         val meal = MealLogEntity(
             id = mealId,
             imageUrl = null,
@@ -323,7 +309,7 @@ class MealDaoTest {
         )
         dao.insertMeal(meal)
 
-        // 栄養データ挿入
+        // Insert nutrition result
         dao.insertNutritionResult(
             NutritionResultEntity(
                 id = UUID.randomUUID().toString(),
@@ -333,7 +319,7 @@ class MealDaoTest {
             )
         )
 
-        // analyzing -> completed -> error -> completed と更新
+        // Update through multiple statuses: analyzing -> completed -> error -> completed
         val analyzingMeal = meal.copy(analysisStatus = "analyzing")
         dao.updateMeal(analyzingMeal)
 
@@ -352,23 +338,19 @@ class MealDaoTest {
         )
         dao.updateMeal(completedAgainMeal)
 
-        // 全ての更新後でも栄養データが保持されていることを確認
+        // Verify nutrition data is still preserved
         val result = dao.getLatestMealWithNutrition()
         assertNotNull(result)
         assertEquals("completed", result?.meal?.analysisStatus)
         assertEquals(expectedCalories, result?.nutritionResult?.calories)
     }
 
-    /**
-     * [回帰テスト] updateMeal を使用した場合のみ栄養データが保持されることを確認
-     * insertMeal(REPLACE) を使用すると nutrition が削除されることも検証
-     */
     @Test
     fun `REGRESSION insertMeal ABORT should reject duplicate and updateMeal should preserve nutrition`() = runTest {
         val mealId = UUID.randomUUID().toString()
         val expectedCalories = 500
 
-        // Step 1: 食事と栄養データを作成
+        // Step 1: Create meal and nutrition data
         val meal = MealLogEntity(
             id = mealId,
             imageUrl = null,
@@ -386,16 +368,16 @@ class MealDaoTest {
             )
         )
 
-        // Step 2: insertMeal(ABORT) で重複挿入すると例外が発生する
+        // Step 2: insertMeal(ABORT) should throw exception on duplicate ID
         val duplicateMeal = meal.copy(analysisStatus = "duplicate_test")
         try {
             dao.insertMeal(duplicateMeal)
             fail("insertMeal with duplicate ID should throw exception with ABORT strategy")
         } catch (e: Exception) {
-            // Expected: ABORT rejects duplicate PK
+            // Expected
         }
 
-        // 栄養データは保持されている
+        // Verify nutrition is still there
         val afterAbort = dao.getLatestMealWithNutrition()
         assertNotNull(
             "Nutrition should be preserved after ABORT",
@@ -403,7 +385,7 @@ class MealDaoTest {
         )
         assertEquals(expectedCalories, afterAbort?.nutritionResult?.calories)
 
-        // Step 3: updateMeal で更新しても栄養データは保持される
+        // Step 3: updateMeal should preserve nutrition
         val updatedMeal = meal.copy(analysisStatus = "completed")
         dao.updateMeal(updatedMeal)
 
@@ -415,9 +397,6 @@ class MealDaoTest {
         assertEquals(expectedCalories, updatedResult?.nutritionResult?.calories)
     }
 
-    /**
-     * [回帰テスト] エラー状態への更新でも栄養データが保持されることを確認
-     */
     @Test
     fun `REGRESSION nutrition data should be preserved when updating to error status`() = runTest {
         val mealId = UUID.randomUUID().toString()
@@ -440,14 +419,14 @@ class MealDaoTest {
             )
         )
 
-        // エラー状態に更新
+        // Update to error status
         val errorMeal = meal.copy(
             analysisStatus = "error",
             analysisError = "API timeout"
         )
         dao.updateMeal(errorMeal)
 
-        // 栄養データが保持されていることを確認
+        // Verify nutrition is preserved
         val result = dao.getLatestMealWithNutrition()
         assertNotNull(result)
         assertEquals("error", result?.meal?.analysisStatus)
@@ -455,14 +434,11 @@ class MealDaoTest {
         assertEquals(expectedCalories, result?.nutritionResult?.calories)
     }
 
-    /**
-     * [回帰テスト] MealWithNutrition の nutritionResult プロパティが正しく動作することを確認
-     */
     @Test
     fun `REGRESSION MealWithNutrition nutritionResult property should work correctly`() = runTest {
         val mealId = UUID.randomUUID().toString()
 
-        // 栄養データありの場合
+        // Meal with nutrition
         val meal = MealLogEntity(
             id = mealId,
             imageUrl = null,
@@ -483,7 +459,7 @@ class MealDaoTest {
         val result = dao.getLatestMealWithNutrition()
         assertNotNull(result)
 
-        // nutritionResult プロパティが NutritionResultEntity を返すことを確認
+        // Verify nutritionResult property returns NutritionResultEntity
         val nutrition = result?.nutritionResult
         assertNotNull(nutrition)
         assertEquals(350, nutrition?.calories)

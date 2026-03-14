@@ -5,10 +5,6 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
-/**
- * 個別の食品品目エンティティ
- * 画像から解析された各食品の詳細情報
- */
 @Entity(
     tableName = "meal_items",
     foreignKeys = [

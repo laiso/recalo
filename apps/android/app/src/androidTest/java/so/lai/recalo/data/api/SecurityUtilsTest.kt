@@ -9,9 +9,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * SecurityUtils の暗号化/復号テスト
+ * Encryption/decryption tests for SecurityUtils
  *
- * Android Keystore を使用するため、androidTest (実機/エミュレータ) で実行
+ * Run as androidTest (physical device/emulator) as it uses Android Keystore
  */
 @RunWith(AndroidJUnit4::class)
 class SecurityUtilsTest {

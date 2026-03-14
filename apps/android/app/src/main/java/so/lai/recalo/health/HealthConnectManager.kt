@@ -163,12 +163,12 @@ class HealthConnectManager(private val context: Context) {
         }
 
         Log.d(logTag, "Finding nutrients in list of size: ${nutrientList.size}")
-        val protein = nutrientList.findNutrient("protein", "タンパク質")
-        val carbohydrates = nutrientList.findNutrient("carbohydrates", "carbs", "炭水化物")
-        val fat = nutrientList.findNutrient("fat", "脂質")
-        val fiber = nutrientList.findNutrient("fiber", "dietary fiber", "食物繊維")
-        val sugar = nutrientList.findNutrient("sugar", "sugars", "糖質")
-        val sodium = nutrientList.findNutrient("sodium", "ナトリウム")
+        val protein = nutrientList.findNutrient("protein")
+        val carbohydrates = nutrientList.findNutrient("carbohydrates", "carbs")
+        val fat = nutrientList.findNutrient("fat")
+        val fiber = nutrientList.findNutrient("fiber", "dietary fiber")
+        val sugar = nutrientList.findNutrient("sugar", "sugars")
+        val sodium = nutrientList.findNutrient("sodium")
 
         Log.d(logTag, "Parsed nutrients - P:$protein g, C:$carbohydrates g, F:$fat g")
 
@@ -193,7 +193,6 @@ class HealthConnectManager(private val context: Context) {
         Log.d(logTag, "Inserting record with $calories kcal")
         client.insertRecords(listOf(record))
 
-        // デバッグログ：保存された栄養素
         val nutrientLog = buildString {
             append("Nutrition saved: calories=$calories kcal")
             protein?.let { append(", protein=${it}g") }

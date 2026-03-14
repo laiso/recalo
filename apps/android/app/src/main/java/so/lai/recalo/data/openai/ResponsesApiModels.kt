@@ -2,10 +2,6 @@ package so.lai.recalo.data.openai
 
 import com.google.gson.annotations.SerializedName
 
-/**
- * Responses API リクエスト
- * https://platform.openai.com/docs/api-reference/responses
- */
 data class ResponsesApiRequest(
     val input: List<InputMessage>,
     val model: String = "gpt-4o-mini",
@@ -108,9 +104,6 @@ data class MealItemPropertySchema(
     val nutrients: NutrientsSchemaProperty = NutrientsSchemaProperty()
 )
 
-/**
- * Responses API レスポンス
- */
 data class ResponsesApiResponse(
     val id: String?,
     val output: List<OutputItem>?,
