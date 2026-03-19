@@ -116,13 +116,18 @@ class HealthConnectManager(private val context: Context) {
         Log.d(logTag, "  calories: ${nutritionResult.calories}")
         Log.d(logTag, "  nutrients: ${nutrients?.size} items")
 
-        return writeNutritionInternal(
-            mealId = meal.id,
-            calories = nutritionResult.calories?.toDouble(),
-            nutrients = nutrients,
-            capturedAt = meal.capturedAt,
-            analysisCompletedAt = meal.analysisCompletedAt
-        )
+        return try {
+            writeNutritionInternal(
+                mealId = meal.id,
+                calories = nutritionResult.calories?.toDouble(),
+                nutrients = nutrients,
+                capturedAt = meal.capturedAt,
+                analysisCompletedAt = meal.analysisCompletedAt
+            )
+        } catch (e: Exception) {
+            Log.e(logTag, "Failed to write nutrition to Health Connect", e)
+            Result.failure(e)
+        }
     }
 
     private suspend fun writeNutritionInternal(

@@ -15,6 +15,7 @@ import so.lai.recalo.data.local.entity.MealLogEntity
 import so.lai.recalo.data.local.entity.NutrientEntity
 import so.lai.recalo.data.local.entity.NutritionResultEntity
 import so.lai.recalo.data.local.model.MealWithNutrition
+import so.lai.recalo.data.openai.ModelAccessDeniedException
 import so.lai.recalo.data.openai.OpenAiService
 
 class MealRepository(
@@ -78,7 +79,6 @@ class MealRepository(
 
                 val allNutrients = mutableListOf<NutrientEntity>()
 
-                // Insert total nutrients
                 nutritionData.nutrients.forEach { n ->
                     allNutrients.add(
                         NutrientEntity(
@@ -92,7 +92,6 @@ class MealRepository(
                     )
                 }
 
-                // Insert items and their nutrients
                 nutritionData.items.forEach { item ->
                     val mealItemId = UUID.randomUUID().toString()
                     val mealItemEntity = MealItemEntity(
@@ -124,7 +123,8 @@ class MealRepository(
 
                 val updatedMeal = mealEntity.copy(
                     analysisStatus = MealLogEntity.AnalysisStatus.COMPLETED,
-                    analysisCompletedAt = System.currentTimeMillis()
+                    analysisCompletedAt = System.currentTimeMillis(),
+                    needsModelUpdateNotice = nutritionData.needsModelUpdateNotice
                 )
                 dao.updateMeal(updatedMeal)
                 Log.d(TAG, "Meal status updated to completed: $mealId")
@@ -136,7 +136,10 @@ class MealRepository(
 
                 val updatedMeal = mealEntity.copy(
                     analysisStatus = MealLogEntity.AnalysisStatus.ERROR,
-                    analysisError = error?.message ?: "Unknown error"
+                    analysisError = when (error) {
+                        is ModelAccessDeniedException -> "Model access denied: ${error.requestedModel}"
+                        else -> error?.message ?: "Unknown error"
+                    }
                 )
                 dao.updateMeal(updatedMeal)
 

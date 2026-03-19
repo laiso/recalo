@@ -35,7 +35,8 @@ data class NutritionResultData(
     val calories: Double,
     val confidence: Double,
     val nutrients: List<NutrientData>,
-    val items: List<MealItemData>
+    val items: List<MealItemData>,
+    val needsModelUpdateNotice: Boolean = false
 )
 
 data class MealItemData(

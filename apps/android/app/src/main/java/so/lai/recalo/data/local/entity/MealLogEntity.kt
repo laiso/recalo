@@ -25,6 +25,8 @@ data class MealLogEntity(
     val analysisError: String? = null,
     @ColumnInfo(name = "analysisCompletedAt")
     val analysisCompletedAt: Long? = null,
+    @ColumnInfo(name = "needsModelUpdateNotice")
+    val needsModelUpdateNotice: Boolean = false,
     @ColumnInfo(name = "createdAt")
     val createdAt: Long = System.currentTimeMillis()
 ) {

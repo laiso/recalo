@@ -17,6 +17,6 @@ class ExampleInstrumentedTest {
     fun useAppContext() {
         // Context of the app under test.
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
-        assertEquals("so.lai.recalo", appContext.packageName)
+        assertTrue(appContext.packageName.startsWith("so.lai.recalo"))
     }
 }

@@ -46,7 +46,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -114,6 +113,7 @@ class HomeViewModel(
     var pendingHealthConnectData by mutableStateOf<MealWithNutrition?>(null)
     var hasHealthConnectPermissions by mutableStateOf<Boolean?>(null)
         private set
+    var showModelUpdateNotice by mutableStateOf<Boolean>(false)
     private val logTag = "HomeViewModel"
     private lateinit var mealRepository: MealRepository
     private var _healthConnectManager: HealthConnectManager? = null
@@ -191,6 +191,10 @@ class HomeViewModel(
                         val mealWithNutrition = mealRepository.getMealWithNutritionById(meal.id)
                         currentAnalysisResult = mealWithNutrition
                         currentScreenState = ScreenState.RESULT
+                        
+                        if (meal.needsModelUpdateNotice) {
+                            showModelUpdateNotice = true
+                        }
                     }
                 } else {
                     val error = result.exceptionOrNull()
@@ -216,6 +220,7 @@ class HomeViewModel(
         healthConnectMessage = null
         saveState = SaveState.Idle
         pendingHealthConnectData = null
+        showModelUpdateNotice = false
     }
 
     fun resetSaveState() {
@@ -666,6 +671,8 @@ fun HomeScreen(
                             ScreenState.RESULT -> ResultScreen(
                                 mealWithNutrition = viewModel.currentAnalysisResult,
                                 hasHealthConnectPermissions = viewModel.hasHealthConnectPermissions,
+                                showModelUpdateNotice = viewModel.showModelUpdateNotice,
+                                onDismissNotice = { viewModel.showModelUpdateNotice = false },
                                 onEditClick = { // Find the first item's ID for this nutrition result
                                     viewModel.currentAnalysisResult?.items?.firstOrNull()?.mealItem?.id?.let { itemId ->
                                         showEditDialog = itemId
@@ -1641,16 +1648,69 @@ private fun ScanningAnimation(
 private fun ResultScreen(
     mealWithNutrition: MealWithNutrition?,
     hasHealthConnectPermissions: Boolean?,
+    showModelUpdateNotice: Boolean = false,
+    onDismissNotice: () -> Unit = {},
     onEditClick: ((String) -> Unit)? = null,
     onSaveClick: () -> Unit,
     onCancelClick: () -> Unit
 ) {
     if (mealWithNutrition == null) return
 
+    val context = LocalContext.current
     val meal = mealWithNutrition.meal
     val nutrition = mealWithNutrition.nutritionResult
     val items = mealWithNutrition.items
     val nutrients = mealWithNutrition.nutrients
+
+    if (showModelUpdateNotice) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Model Update Available",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "To use gpt-5.4 series models, add model access in your OpenAI project settings.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+                Row {
+                    TextButton(
+                        onClick = onDismissNotice
+                    ) {
+                        Text("Later")
+                    }
+                    Button(
+                        onClick = {
+                            val intent = Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse("https://platform.openai.com/settings/limits")
+                            )
+                            context.startActivity(intent)
+                        }
+                    ) {
+                        Text("Open Settings")
+                    }
+                }
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
