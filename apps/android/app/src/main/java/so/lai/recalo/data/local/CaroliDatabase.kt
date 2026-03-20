@@ -16,7 +16,7 @@ import so.lai.recalo.data.local.entity.NutritionResultEntity
         MealItemEntity::class,
         NutrientEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 abstract class CaroliDatabase : RoomDatabase() {
@@ -33,7 +33,8 @@ abstract class CaroliDatabase : RoomDatabase() {
                     CaroliDatabase::class.java,
                     "caroli_database"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .fallbackToDestructiveMigrationOnDowngrade()
                     .build()
                 INSTANCE = instance
                 instance

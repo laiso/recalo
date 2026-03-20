@@ -11,6 +11,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import so.lai.recalo.data.api.AiConfig
 
 /**
  * Nutrition analysis service using OpenAI Responses API
@@ -21,6 +22,7 @@ class OpenAiService(
     private val timeoutSeconds: Long = 60,
     private val baseUrl: String = OPENAI_API_URL
 ) {
+    private val trimmedApiKey = apiKey.trim()
     private val client = OkHttpClient.Builder()
         .connectTimeout(timeoutSeconds, TimeUnit.SECONDS)
         .readTimeout(timeoutSeconds, TimeUnit.SECONDS)
@@ -52,7 +54,7 @@ class OpenAiService(
 
     suspend fun analyzeNutrition(
         imagePath: String,
-        modelName: String = "gpt-4o-mini",
+        modelName: String = "gpt-5.4-nano",
         language: String = "English"
     ): Result<NutritionResultData> = withContext(Dispatchers.IO) {
         try {
@@ -66,7 +68,38 @@ class OpenAiService(
             if (!response.isSuccessful) {
                 val errorBody = response.body?.string()
                 Log.e(TAG, "OpenAI API error: ${response.code} $errorBody")
-                return@withContext Result.failure(Exception("OpenAI API error: ${response.code}"))
+                
+                when (response.code) {
+                    403, 404 -> {
+                        Log.w(TAG, "Model $modelName not accessible, falling back to ${AiConfig.MODEL_FALLBACK}")
+                        val fallbackRequest = createRequest(base64Image, AiConfig.MODEL_FALLBACK, language)
+
+                        client.newCall(fallbackRequest).execute().use { fallbackResponse ->
+                            if (fallbackResponse.isSuccessful) {
+                                val fallbackBody = fallbackResponse.body?.string()
+                                Log.d(TAG, "Fallback successful with ${AiConfig.MODEL_FALLBACK}")
+                                val fallbackParsed = gson.fromJson(fallbackBody, ResponsesApiResponse::class.java)
+                                val fallbackContent = fallbackParsed.output
+                                    ?.firstOrNull { it.type == "message" }
+                                    ?.content
+                                    ?.firstOrNull { it.type == "output_text" }
+                                    ?.text
+
+                                if (fallbackContent != null) {
+                                    val fallbackNutrition = gson.fromJson(fallbackContent, NutritionResultData::class.java)
+                                    return@withContext Result.success(fallbackNutrition.copy(needsModelUpdateNotice = true))
+                                }
+                            }
+
+                            val fallbackErrorBody = fallbackResponse.body?.string()
+                            Log.e(TAG, "Fallback also failed: ${fallbackResponse.code} $fallbackErrorBody")
+                            return@withContext Result.failure(
+                                ModelAccessDeniedException(modelName, response.code, fallbackResponse.code)
+                            )
+                        }
+                    }
+                    else -> return@withContext Result.failure(Exception("OpenAI API error: ${response.code}"))
+                }
             }
 
             val responseBody = response.body?.string()
@@ -134,8 +167,20 @@ class OpenAiService(
         return Request.Builder()
             .url(baseUrl)
             .post(jsonBody.toRequestBody("application/json".toMediaType()))
-            .addHeader("Authorization", "Bearer $apiKey")
+            .addHeader("Authorization", "Bearer $trimmedApiKey")
             .addHeader("Content-Type", "application/json")
             .build()
     }
 }
+
+class ModelAccessDeniedException(
+    val requestedModel: String,
+    val originalErrorCode: Int,
+    val fallbackErrorCode: Int? = null
+) : Exception(
+    if (fallbackErrorCode != null) {
+        "Model access denied: $requestedModel (HTTP $originalErrorCode), fallback also failed (HTTP $fallbackErrorCode)"
+    } else {
+        "Model access denied: $requestedModel (HTTP $originalErrorCode)"
+    }
+)

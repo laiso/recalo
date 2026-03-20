@@ -15,9 +15,13 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import so.lai.recalo.data.local.entity.MealItemEntity
 import so.lai.recalo.data.local.entity.MealLogEntity
 import so.lai.recalo.data.local.entity.NutrientEntity
 import so.lai.recalo.data.local.entity.NutritionResultEntity
+import so.lai.recalo.data.local.model.MealItemWithNutrients
+import so.lai.recalo.data.local.model.MealWithNutrition
+import so.lai.recalo.data.local.model.NutritionResultWithDetails
 
 /**
  * Health Connect integration tests
@@ -129,6 +133,7 @@ class HealthConnectIntegrationTest {
 
         // Create test data
         val mealId = UUID.randomUUID().toString()
+        val nutritionId = UUID.randomUUID().toString()
         val testMeal = MealLogEntity(
             id = mealId,
             imageUrl = null,
@@ -138,26 +143,33 @@ class HealthConnectIntegrationTest {
             analysisCompletedAt = System.currentTimeMillis()
         )
 
-        val testNutrients = listOf(
-            NutrientEntity("Protein", 25.0, "g"),
-            NutrientEntity("Carbohydrates", 50.0, "g"),
-            NutrientEntity("Fat", 15.0, "g"),
-            NutrientEntity("Sodium", 500.0, "mg")
-        )
-
         val testNutrition = NutritionResultEntity(
-            id = UUID.randomUUID().toString(),
+            id = nutritionId,
             mealLogId = mealId,
             calories = 450,
-            nutrients = testNutrients,
-            items = null,
             confidence = 0.9
+        )
+
+        val testNutrients = listOf(
+            NutrientEntity(UUID.randomUUID().toString(), nutritionId, null, "Protein", 25.0, "g"),
+            NutrientEntity(UUID.randomUUID().toString(), nutritionId, null, "Carbohydrates", 50.0, "g"),
+            NutrientEntity(UUID.randomUUID().toString(), nutritionId, null, "Fat", 15.0, "g"),
+            NutrientEntity(UUID.randomUUID().toString(), nutritionId, null, "Sodium", 500.0, "mg")
+        )
+
+        val mealWithNutrition = MealWithNutrition(
+            meal = testMeal,
+            nutritionResultDetails = NutritionResultWithDetails(
+                nutritionResult = testNutrition,
+                items = emptyList(),
+                nutrients = testNutrients
+            )
         )
 
         println("Writing nutrition data: ${testNutrition.calories} kcal")
 
         // Execute write
-        val result = healthConnectManager.writeNutrition(testMeal, testNutrition)
+        val result = healthConnectManager.writeNutrition(mealWithNutrition)
 
         // Verify results
         if (result.isSuccess) {
@@ -209,6 +221,7 @@ class HealthConnectIntegrationTest {
 
         // Write test data first
         val mealId = UUID.randomUUID().toString()
+        val nutritionId = UUID.randomUUID().toString()
         val testMeal = MealLogEntity(
             id = mealId,
             imageUrl = null,
@@ -219,19 +232,28 @@ class HealthConnectIntegrationTest {
         )
 
         val testNutrition = NutritionResultEntity(
-            id = UUID.randomUUID().toString(),
+            id = nutritionId,
             mealLogId = mealId,
             calories = 300,
-            nutrients = listOf(
-                NutrientEntity("Protein", 20.0, "g"),
-                NutrientEntity("Carbohydrates", 30.0, "g")
-            ),
-            items = null,
             confidence = 0.8
         )
 
+        val testNutrients = listOf(
+            NutrientEntity(UUID.randomUUID().toString(), nutritionId, null, "Protein", 20.0, "g"),
+            NutrientEntity(UUID.randomUUID().toString(), nutritionId, null, "Carbohydrates", 30.0, "g")
+        )
+
+        val mealWithNutrition = MealWithNutrition(
+            meal = testMeal,
+            nutritionResultDetails = NutritionResultWithDetails(
+                nutritionResult = testNutrition,
+                items = emptyList(),
+                nutrients = testNutrients
+            )
+        )
+
         // Write
-        val writeResult = healthConnectManager.writeNutrition(testMeal, testNutrition)
+        val writeResult = healthConnectManager.writeNutrition(mealWithNutrition)
 
         if (writeResult.isFailure) {
             println("Failed to write test data: ${writeResult.exceptionOrNull()?.message}")
@@ -276,6 +298,7 @@ class HealthConnectIntegrationTest {
         val expectedFat = 20.0
 
         val mealId = UUID.randomUUID().toString()
+        val nutritionId = UUID.randomUUID().toString()
         val testMeal = MealLogEntity(
             id = mealId,
             imageUrl = null,
@@ -286,21 +309,30 @@ class HealthConnectIntegrationTest {
         )
 
         val testNutrition = NutritionResultEntity(
-            id = UUID.randomUUID().toString(),
+            id = nutritionId,
             mealLogId = mealId,
             calories = expectedCalories.toInt(),
-            nutrients = listOf(
-                NutrientEntity("Protein", expectedProtein, "g"),
-                NutrientEntity("Carbohydrates", expectedCarbs, "g"),
-                NutrientEntity("Fat", expectedFat, "g")
-            ),
-            items = null,
             confidence = 0.85
+        )
+
+        val testNutrients = listOf(
+            NutrientEntity(UUID.randomUUID().toString(), nutritionId, null, "Protein", expectedProtein, "g"),
+            NutrientEntity(UUID.randomUUID().toString(), nutritionId, null, "Carbohydrates", expectedCarbs, "g"),
+            NutrientEntity(UUID.randomUUID().toString(), nutritionId, null, "Fat", expectedFat, "g")
+        )
+
+        val mealWithNutrition = MealWithNutrition(
+            meal = testMeal,
+            nutritionResultDetails = NutritionResultWithDetails(
+                nutritionResult = testNutrition,
+                items = emptyList(),
+                nutrients = testNutrients
+            )
         )
 
         // Step 1: Write
         println("=== Step 1: Writing nutrition data ===")
-        val writeResult = healthConnectManager.writeNutrition(testMeal, testNutrition)
+        val writeResult = healthConnectManager.writeNutrition(mealWithNutrition)
 
         assertTrue("Write should succeed", writeResult.isSuccess)
 
@@ -356,8 +388,10 @@ class HealthConnectIntegrationTest {
             return@runBlocking
         }
 
+        val mealId = UUID.randomUUID().toString()
+        val nutritionId = UUID.randomUUID().toString()
         val testMeal = MealLogEntity(
-            id = UUID.randomUUID().toString(),
+            id = mealId,
             imageUrl = null,
             capturedAt = System.currentTimeMillis(),
             imagePath = null,
@@ -365,15 +399,22 @@ class HealthConnectIntegrationTest {
         )
 
         val testNutrition = NutritionResultEntity(
-            id = UUID.randomUUID().toString(),
-            mealLogId = testMeal.id,
+            id = nutritionId,
+            mealLogId = mealId,
             calories = 100,
-            nutrients = null,
-            items = null,
             confidence = null
         )
 
-        val result = healthConnectManager.writeNutrition(testMeal, testNutrition)
+        val mealWithNutrition = MealWithNutrition(
+            meal = testMeal,
+            nutritionResultDetails = NutritionResultWithDetails(
+                nutritionResult = testNutrition,
+                items = emptyList(),
+                nutrients = emptyList()
+            )
+        )
+
+        val result = healthConnectManager.writeNutrition(mealWithNutrition)
 
         // Should fail without permissions
         assertTrue("Write should fail without permissions", result.isFailure)

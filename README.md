@@ -12,10 +12,11 @@ Recalo is an Android application that uses OpenAI's Vision capabilities to analy
 
 ## Features
 
-* AI-Powered Nutrition Analysis: Take a photo or select an image from your gallery, and the app uses OpenAI (gpt-4o-mini / gpt-4o) to estimate the nutritional breakdown and identify specific food items in the picture.
+* AI-Powered Nutrition Analysis: Take a photo or select an image from your gallery, and the app uses OpenAI (gpt-5.4 / gpt-5.4-mini / gpt-5.4-nano) to estimate the nutritional breakdown and identify specific food items in the picture.
 * Health Connect Integration: Seamlessly writes your daily meal records directly to Google Health Connect, allowing you to centralize your nutrition data alongside other fitness metrics.
 * Local First Storage: All meal histories and images are stored securely on your device using Room database.
 * Bring Your Own Key (BYOK): To use the AI features, you simply input your own OpenAI API key.
+* Automatic Fallback: If gpt-5.4 models are not accessible, the app automatically falls back to gpt-4o-mini.
 
 ## Getting Started
 
@@ -24,6 +25,7 @@ Recalo is an Android application that uses OpenAI's Vision capabilities to analy
 * Android Studio (Koala or newer recommended)
 * An Android device or emulator running Android 14+ (API 34+) for Health Connect compatibility.
 * An OpenAI API Key. [Create one here](https://platform.openai.com/api-keys)
+* **Model Access**: To use gpt-5.4 series models, you need to add them to your project's allowed models. [Configure here](https://platform.openai.com/settings/limits)
 
 ### Build Instructions
 
@@ -44,8 +46,14 @@ Recalo is an Android application that uses OpenAI's Vision capabilities to analy
 1. Launch the app on your device.
 2. Tap the Settings (Gear icon) in the top right corner.
 3. Paste your OpenAI API Key.
-4. (Optional) Adjust the AI Model quality or the start time for your daily summaries.
-5. Tap Connect on the home screen to grant the app write permissions to Google Health Connect.
+4. (Optional) Adjust the AI Model quality:
+   - **Low (gpt-5.4-nano)**: Fastest and cheapest, good for simple meals
+   - **Medium (gpt-5.4-mini)**: Balanced performance and cost, 2x faster than gpt-5 mini
+   - **High (gpt-5.4)**: Best accuracy for complex meals
+5. (Optional) Adjust the start time for your daily summaries.
+6. Tap Connect on the home screen to grant the app write permissions to Google Health Connect.
+
+**Note**: If you see a notice about model access, visit [OpenAI Project Limits](https://platform.openai.com/settings/limits) to add gpt-5.4 series models to your allowed models. The app will automatically fall back to gpt-4o-mini if the selected model is not accessible.
 
 ## Tech Stack
 

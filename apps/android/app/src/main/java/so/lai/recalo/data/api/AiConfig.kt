@@ -5,9 +5,11 @@ object AiConfig {
     const val LEVEL_MEDIUM = "medium"
     const val LEVEL_HIGH = "high"
 
-    const val MODEL_LOW = "gpt-4o-mini"
-    const val MODEL_MEDIUM = "gpt-5-mini"
+    const val MODEL_LOW = "gpt-5.4-nano"
+    const val MODEL_MEDIUM = "gpt-5.4-mini"
     const val MODEL_HIGH = "gpt-5.4"
+    
+    const val MODEL_FALLBACK = "gpt-4o-mini"
 
     data class ModelOption(
         val level: String,
@@ -19,14 +21,14 @@ object AiConfig {
     val options = listOf(
         ModelOption(
             level = LEVEL_LOW,
-            label = "Low (gpt-4o-mini)",
-            description = "~$0.0004 / image",
+            label = "Low (gpt-5.4-nano)",
+            description = "~$0.0002 / image",
             modelId = MODEL_LOW
         ),
         ModelOption(
             level = LEVEL_MEDIUM,
-            label = "Medium (gpt-5-mini)",
-            description = "~$0.001 / image",
+            label = "Medium (gpt-5.4-mini)",
+            description = "~$0.00075 / image",
             modelId = MODEL_MEDIUM
         ),
         ModelOption(
