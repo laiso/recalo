@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 class SessionManager(private val context: Context) {
     companion object {
         private const val TAG = "SessionManager"
+        const val DEFAULT_DAY_START_HOUR = 5
     }
 
     data class SessionState(
@@ -59,15 +60,6 @@ class SessionManager(private val context: Context) {
 
     fun getModelName(): String {
         return AiConfig.getModelId(getModelLevel())
-    }
-
-    fun saveDayStartHour(hour: Int) {
-        prefs.edit().putInt("day_start_hour", hour).apply()
-        refreshSessionState()
-    }
-
-    fun getDayStartHour(): Int {
-        return prefs.getInt("day_start_hour", 5)
     }
 
     fun getOpenAIKey(): String? {

@@ -455,11 +455,10 @@ fun HomeScreen(
         }
     }
 
-    var currentDayStartHour by remember { mutableStateOf(sessionManager.getDayStartHour()) }
     var selectedDateOffset by remember { mutableIntStateOf(0) }
 
-    val baseToday = remember(currentDayStartHour) {
-        java.time.ZonedDateTime.now().minusHours(currentDayStartHour.toLong()).toLocalDate()
+    val baseToday = remember {
+        java.time.ZonedDateTime.now().minusHours(so.lai.recalo.data.api.SessionManager.DEFAULT_DAY_START_HOUR.toLong()).toLocalDate()
     }
     val targetDate = baseToday.plusDays(selectedDateOffset.toLong())
 
@@ -470,7 +469,7 @@ fun HomeScreen(
             if (sessionManager.getOpenAIKey().isNullOrBlank()) {
                 showSettingsDialog = true
             } else {
-                val capturedAt = targetDate.atTime(currentDayStartHour, 0)
+                val capturedAt = targetDate.atTime(so.lai.recalo.data.api.SessionManager.DEFAULT_DAY_START_HOUR, 0)
                     .atZone(ZoneId.systemDefault())
                     .toInstant()
                     .toEpochMilli()
@@ -488,7 +487,7 @@ fun HomeScreen(
                 if (sessionManager.getOpenAIKey().isNullOrBlank()) {
                     showSettingsDialog = true
                 } else {
-                    val capturedAt = targetDate.atTime(currentDayStartHour, 0)
+                    val capturedAt = targetDate.atTime(so.lai.recalo.data.api.SessionManager.DEFAULT_DAY_START_HOUR, 0)
                         .atZone(ZoneId.systemDefault())
                         .toInstant()
                         .toEpochMilli()
@@ -499,9 +498,9 @@ fun HomeScreen(
         }
     }
 
-    val targetMealsAndSummary by remember(viewModel.meals, targetDate, currentDayStartHour) {
+    val targetMealsAndSummary by remember(viewModel.meals, targetDate) {
         derivedStateOf {
-            val startOfTargetDate = targetDate.atTime(currentDayStartHour, 0).atZone(
+            val startOfTargetDate = targetDate.atTime(so.lai.recalo.data.api.SessionManager.DEFAULT_DAY_START_HOUR, 0).atZone(
                 ZoneId.systemDefault()
             ).toInstant().toEpochMilli()
             val endOfTargetDate = startOfTargetDate + 24 * 60 * 60 * 1000L
@@ -546,13 +545,10 @@ fun HomeScreen(
         SettingsDialog(
             currentKey = sessionManager.getOpenAIKey() ?: "",
             currentLevel = sessionManager.getModelLevel(),
-            currentDayStartHour = currentDayStartHour,
             onDismiss = { showSettingsDialog = false },
-            onSave = { newKey, newLevel, newStartHour ->
+            onSave = { newKey, newLevel ->
                 sessionManager.saveOpenAIKey(newKey)
                 sessionManager.saveModelLevel(newLevel)
-                sessionManager.saveDayStartHour(newStartHour)
-                currentDayStartHour = newStartHour
                 showSettingsDialog = false
             }
         )
@@ -1901,13 +1897,11 @@ private fun ResultScreen(
 fun SettingsDialog(
     currentKey: String,
     currentLevel: String,
-    currentDayStartHour: Int,
     onDismiss: () -> Unit,
-    onSave: (String, String, Int) -> Unit
+    onSave: (String, String) -> Unit
 ) {
     var text by remember { mutableStateOf(currentKey) }
     var selectedLevel by remember { mutableStateOf(currentLevel) }
-    var dayStartHourText by remember { mutableStateOf(currentDayStartHour.toString()) }
     val context = LocalContext.current
 
     AlertDialog(
@@ -1971,40 +1965,14 @@ fun SettingsDialog(
                         )
                     }
                 }
-
-                // Day Start Time section
-                Column {
-                    Text(
-                        "Day Start Time (Hour)",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    OutlinedTextField(
-                        value = dayStartHourText,
-                        onValueChange = { newValue ->
-                            if (newValue.isEmpty() || newValue.all { it.isDigit() }) {
-                                val intValue = newValue.toIntOrNull()
-                                if (newValue.isEmpty() || (intValue != null && intValue in 0..23)) {
-                                    dayStartHourText = newValue
-                                }
-                            }
-                        },
-                        label = { Text("Hour (0-23)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                    )
-                }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    val hour = dayStartHourText.toIntOrNull() ?: 5
-                    onSave(text, selectedLevel, hour)
+                    onSave(text, selectedLevel)
                 },
-                enabled = text.isNotBlank() && dayStartHourText.isNotBlank()
+                enabled = text.isNotBlank()
             ) {
                 Text("Save")
             }
