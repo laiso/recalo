@@ -1281,19 +1281,17 @@ private fun DetailScreen(
     val meal = mealWithNutrition.meal
     val nutrition = mealWithNutrition.nutritionResult
 
-    val dateTimeText = remember(meal.capturedAt) {
-        meal.capturedAt?.let { timestamp ->
-            val instant = java.time.Instant.ofEpochMilli(timestamp)
-            val dateTime = java.time.LocalDateTime.ofInstant(
-                instant,
-                java.time.ZoneId.systemDefault()
-            )
-            val formatter = java.time.format.DateTimeFormatter.ofPattern(
-                "MMM d, h:mm a",
-                java.util.Locale.getDefault()
-            )
-            formatter.format(dateTime)
-        } ?: "Unknown Date"
+    val dateTimeText = remember(meal.createdAt) {
+        val instant = java.time.Instant.ofEpochMilli(meal.createdAt)
+        val dateTime = java.time.LocalDateTime.ofInstant(
+            instant,
+            java.time.ZoneId.systemDefault()
+        )
+        val formatter = java.time.format.DateTimeFormatter.ofPattern(
+            "MMM d, h:mm a",
+            java.util.Locale.getDefault()
+        )
+        formatter.format(dateTime)
     }
 
     Column(
