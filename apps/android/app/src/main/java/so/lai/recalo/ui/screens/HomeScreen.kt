@@ -55,6 +55,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.health.connect.client.PermissionController
@@ -1169,10 +1172,53 @@ private fun SummaryNutrientItem(color: Color, label: String, value: String, perc
 }
 
 @Composable
+private fun MealImageFullscreenDialog(
+    imagePath: String,
+    onDismiss: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+        ) {
+            AsyncImage(
+                model = File(imagePath),
+                contentDescription = "Meal photo enlarged",
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(onClick = onDismiss),
+                contentScale = ContentScale.Fit
+            )
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Close",
+                    tint = Color.White
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun MealCard(
     mealWithNutrition: MealWithNutrition,
     onClick: () -> Unit
 ) {
+    var showFullscreenImage by remember { mutableStateOf(false) }
     val meal = mealWithNutrition.meal
     val nutrition = mealWithNutrition.nutritionResult
 
@@ -1198,7 +1244,8 @@ private fun MealCard(
                     contentDescription = "Meal thumbnail",
                     modifier = Modifier
                         .size(80.dp)
-                        .clip(RoundedCornerShape(16.dp)),
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable { showFullscreenImage = true },
                     contentScale = ContentScale.Crop
                 )
                 Spacer(modifier = Modifier.width(16.dp))
@@ -1252,6 +1299,13 @@ private fun MealCard(
             }
         }
     }
+
+    if (showFullscreenImage && meal.imagePath != null) {
+        MealImageFullscreenDialog(
+            imagePath = meal.imagePath,
+            onDismiss = { showFullscreenImage = false }
+        )
+    }
 }
 
 @Composable
@@ -1278,6 +1332,7 @@ private fun DetailScreen(
     if (mealWithNutrition == null) return
 
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showFullscreenImage by remember { mutableStateOf(false) }
     val meal = mealWithNutrition.meal
     val nutrition = mealWithNutrition.nutritionResult
 
@@ -1393,7 +1448,8 @@ private fun DetailScreen(
                             contentDescription = "Meal thumbnail",
                             modifier = Modifier
                                 .size(100.dp)
-                                .clip(RoundedCornerShape(12.dp)),
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { showFullscreenImage = true },
                             contentScale = ContentScale.Crop
                         )
 
@@ -1464,6 +1520,13 @@ private fun DetailScreen(
                 }
             }
         }
+    }
+
+    if (showFullscreenImage && meal.imagePath != null) {
+        MealImageFullscreenDialog(
+            imagePath = meal.imagePath,
+            onDismiss = { showFullscreenImage = false }
+        )
     }
 
     if (showDeleteConfirm) {
@@ -1650,6 +1713,7 @@ private fun ResultScreen(
 ) {
     if (mealWithNutrition == null) return
 
+    var showFullscreenImage by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val meal = mealWithNutrition.meal
     val nutrition = mealWithNutrition.nutritionResult
@@ -1716,7 +1780,8 @@ private fun ResultScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(200.dp),
+                    .height(200.dp)
+                    .clickable { showFullscreenImage = true },
                 shape = RoundedCornerShape(16.dp)
             ) {
                 AsyncImage(
@@ -1888,6 +1953,13 @@ private fun ResultScreen(
                 }
             }
         }
+    }
+
+    if (showFullscreenImage && meal.imagePath != null) {
+        MealImageFullscreenDialog(
+            imagePath = meal.imagePath,
+            onDismiss = { showFullscreenImage = false }
+        )
     }
 }
 
