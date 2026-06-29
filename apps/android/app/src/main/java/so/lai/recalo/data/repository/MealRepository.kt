@@ -31,6 +31,27 @@ class MealRepository(
         return dao.getAllMealsWithNutrition()
     }
 
+    suspend fun searchPreviousMeals(query: String): List<MealWithNutrition> {
+        val normalizedQuery = query.trim()
+        if (normalizedQuery.isEmpty()) return emptyList()
+
+        return dao.searchMealsByFoodName(normalizedQuery)
+    }
+
+    suspend fun duplicateMealFromHistory(
+        sourceMeal: MealWithNutrition,
+        capturedAt: Long
+    ): MealLogEntity {
+        val db = database
+        return if (db != null) {
+            db.withTransaction {
+                duplicateMealFromHistoryInternal(sourceMeal, capturedAt)
+            }
+        } else {
+            duplicateMealFromHistoryInternal(sourceMeal, capturedAt)
+        }
+    }
+
     suspend fun uploadAndAnalyzeMeal(
         context: Context,
         imageUri: Uri,
@@ -151,6 +172,78 @@ class MealRepository(
         }
     }
 
+    private suspend fun duplicateMealFromHistoryInternal(
+        sourceMeal: MealWithNutrition,
+        capturedAt: Long
+    ): MealLogEntity {
+        val sourceNutrition = sourceMeal.nutritionResult
+            ?: throw IllegalArgumentException("Source meal has no nutrition result")
+        val now = System.currentTimeMillis()
+        val newMealId = UUID.randomUUID().toString()
+        val newNutritionResultId = UUID.randomUUID().toString()
+
+        val newMeal = sourceMeal.meal.copy(
+            id = newMealId,
+            capturedAt = capturedAt,
+            analysisStatus = MealLogEntity.AnalysisStatus.COMPLETED,
+            analysisError = null,
+            analysisCompletedAt = now,
+            needsModelUpdateNotice = false,
+            createdAt = now
+        )
+
+        dao.insertMeal(newMeal)
+
+        dao.insertNutritionResult(
+            sourceNutrition.copy(
+                id = newNutritionResultId,
+                mealLogId = newMealId,
+                createdAt = now
+            )
+        )
+
+        val itemIdMap = mutableMapOf<String, String>()
+        sourceMeal.items.orEmpty().forEach { itemWithNutrients ->
+            val sourceItem = itemWithNutrients.mealItem
+            val newItemId = UUID.randomUUID().toString()
+            itemIdMap[sourceItem.id] = newItemId
+            dao.insertMealItem(
+                sourceItem.copy(
+                    id = newItemId,
+                    nutritionResultId = newNutritionResultId
+                )
+            )
+        }
+
+        val copiedTotalNutrients = sourceMeal.nutrients.orEmpty().map { nutrient ->
+            nutrient.copy(
+                id = UUID.randomUUID().toString(),
+                nutritionResultId = newNutritionResultId,
+                mealItemId = null
+            )
+        }
+
+        val copiedItemNutrients = sourceMeal.items.orEmpty().flatMap { itemWithNutrients ->
+            val newItemId = itemIdMap[itemWithNutrients.mealItem.id]
+                ?: return@flatMap emptyList()
+            itemWithNutrients.nutrients.map { nutrient ->
+                nutrient.copy(
+                    id = UUID.randomUUID().toString(),
+                    nutritionResultId = null,
+                    mealItemId = newItemId
+                )
+            }
+        }
+
+        val allNutrients = copiedTotalNutrients + copiedItemNutrients
+        if (allNutrients.isNotEmpty()) {
+            dao.insertNutrients(allNutrients)
+        }
+
+        Log.d(TAG, "Duplicated meal from history: ${sourceMeal.meal.id} -> $newMealId")
+        return newMeal
+    }
+
     private fun copyImageToInternalStorage(context: Context, uri: Uri): File {
         val fileName = "meal_${System.currentTimeMillis()}.jpg"
         val file = File(context.filesDir, "images/$fileName")
@@ -168,8 +261,13 @@ class MealRepository(
     suspend fun deleteMeal(mealId: String) {
         val meal = dao.getMealById(mealId)
         dao.deleteMealById(mealId)
-        meal?.imagePath?.also { path ->
+        meal?.imagePath?.takeIf { it.isNotBlank() }?.also { path ->
             try {
+                if (dao.countMealsByImagePath(path) > 0) {
+                    Log.d(TAG, "Image file retained because it is still referenced: $path")
+                    return@also
+                }
+
                 val file = File(path)
                 if (file.exists()) {
                     val deleted = file.delete()
