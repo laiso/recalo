@@ -3,10 +3,10 @@ name: Android Delivery
 on:
   push:
     branches: [ "main" ]
-    tags: [ "*" ]
+    tags: [ "v*" ]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   quality-gate:
@@ -75,3 +75,34 @@ jobs:
           path: apps/android/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
           retention-days: 14
+
+  github-release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: build-apk
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Download APK artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: android-apks-${{ github.run_number }}
+          path: release-apks
+
+      - name: Create GitHub Release and upload APKs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          mapfile -t apks < <(find release-apks -type f -name '*.apk' | sort)
+          if [ "${#apks[@]}" -eq 0 ]; then
+            echo "No APK files found for release upload." >&2
+            exit 1
+          fi
+
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release upload "$TAG_NAME" "${apks[@]}" --clobber
+          else
+            gh release create "$TAG_NAME" "${apks[@]}" --title "$TAG_NAME" --generate-notes
+          fi
