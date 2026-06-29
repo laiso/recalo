@@ -5,6 +5,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -15,6 +17,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Shadows
 import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
@@ -52,6 +55,36 @@ class MealImageStorageTest {
         assertEquals(File(context.filesDir, "images").absolutePath, savedFile.parentFile?.absolutePath)
         assertEquals("meal_12345.jpg", savedFile.name)
         assertNotEquals(sourceFile.absolutePath, savedFile.absolutePath)
+        assertTrue(maxOf(savedBitmap.width, savedBitmap.height) <= MealImageStorage.DEFAULT_MAX_EDGE_PX)
+        assertEquals(Bitmap.CompressFormat.JPEG, savedFile.readCompressionFormat())
+
+        savedBitmap.recycle()
+    }
+
+    @Test
+    fun `saveCompressedJpeg stores resized jpeg from content uri stream`() {
+        val bitmap = Bitmap.createBitmap(1600, 900, Bitmap.Config.ARGB_8888)
+        val bytes = ByteArrayOutputStream().use { output ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, output)
+            output.toByteArray()
+        }
+        bitmap.recycle()
+
+        val uri = Uri.parse("content://so.lai.recalo.test/images/gallery-meal")
+        Shadows.shadowOf(context.contentResolver).registerInputStream(
+            uri,
+            ByteArrayInputStream(bytes)
+        )
+
+        val savedFile = MealImageStorage.saveCompressedJpeg(
+            context = context,
+            uri = uri,
+            timestampMillis = 23456L
+        )
+
+        val savedBitmap = BitmapFactory.decodeFile(savedFile.absolutePath)
+
+        assertEquals("meal_23456.jpg", savedFile.name)
         assertTrue(maxOf(savedBitmap.width, savedBitmap.height) <= MealImageStorage.DEFAULT_MAX_EDGE_PX)
         assertEquals(Bitmap.CompressFormat.JPEG, savedFile.readCompressionFormat())
 
