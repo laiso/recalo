@@ -3,11 +3,8 @@ package so.lai.recalo.health
 import android.content.Context
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.records.NutritionRecord
-import androidx.health.connect.client.request.ReadRecordsRequest
-import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -15,11 +12,9 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import so.lai.recalo.data.local.entity.MealItemEntity
 import so.lai.recalo.data.local.entity.MealLogEntity
 import so.lai.recalo.data.local.entity.NutrientEntity
 import so.lai.recalo.data.local.entity.NutritionResultEntity
-import so.lai.recalo.data.local.model.MealItemWithNutrients
 import so.lai.recalo.data.local.model.MealWithNutrition
 import so.lai.recalo.data.local.model.NutritionResultWithDetails
 
@@ -35,6 +30,7 @@ class HealthConnectIntegrationTest {
     private lateinit var context: Context
     private lateinit var healthConnectManager: HealthConnectManager
     private lateinit var client: HealthConnectClient
+    private val createdMealIds = mutableSetOf<String>()
 
     @Before
     fun setUp() {
@@ -45,25 +41,16 @@ class HealthConnectIntegrationTest {
 
     @After
     fun tearDown() {
-        // Clean up records saved after the test
         runBlocking {
             try {
-                val now = Instant.now()
-                val oneDayAgo = now.minusSeconds(86400)
-                val response = client.readRecords(
-                    ReadRecordsRequest(
+                if (createdMealIds.isNotEmpty()) {
+                    println("Cleaning up ${createdMealIds.size} test records")
+                    client.deleteRecords(
                         recordType = NutritionRecord::class,
-                        timeRangeFilter = TimeRangeFilter.between(oneDayAgo, now)
+                        recordIdsList = emptyList(),
+                        clientRecordIdsList = createdMealIds.toList()
                     )
-                )
-                // Delete test records (records within the last hour)
-                val testRecords = response.records.filter { record ->
-                    val recordTime = record.startTime
-                    val timeDiff = java.time.Duration.between(recordTime, now).seconds
-                    timeDiff < 3600 // Consider records within 1 hour as test targets
-                }
-                if (testRecords.isNotEmpty()) {
-                    println("Cleaning up ${testRecords.size} test records")
+                    createdMealIds.clear()
                 }
             } catch (e: Exception) {
                 println("Cleanup error: ${e.message}")
@@ -133,6 +120,7 @@ class HealthConnectIntegrationTest {
 
         // Create test data
         val mealId = UUID.randomUUID().toString()
+        createdMealIds.add(mealId)
         val nutritionId = UUID.randomUUID().toString()
         val testMeal = MealLogEntity(
             id = mealId,
@@ -179,11 +167,8 @@ class HealthConnectIntegrationTest {
             val records = healthConnectManager.readRecentNutrition()
             println("Read ${records.size} records from Health Connect")
 
-            // Search for recent records
-            val now = Instant.now()
             val matchingRecord = records.firstOrNull { record ->
-                val timeDiff = java.time.Duration.between(record.startTime, now)
-                timeDiff.toMinutes() < 5 // Records within 5 minutes
+                record.metadata.clientRecordId == mealId
             }
 
             if (matchingRecord != null) {
@@ -221,6 +206,7 @@ class HealthConnectIntegrationTest {
 
         // Write test data first
         val mealId = UUID.randomUUID().toString()
+        createdMealIds.add(mealId)
         val nutritionId = UUID.randomUUID().toString()
         val testMeal = MealLogEntity(
             id = mealId,
@@ -267,12 +253,11 @@ class HealthConnectIntegrationTest {
         val records = healthConnectManager.readRecentNutrition()
         println("Read ${records.size} records")
 
-        // Should find record with 300 kcal
         val foundRecord = records.firstOrNull { record ->
-            (record.energy?.inKilocalories ?: 0.0) == 300.0
+            record.metadata.clientRecordId == mealId
         }
 
-        assertNotNull("Should find the test record with 300 kcal", foundRecord)
+        assertNotNull("Should find the test record by clientRecordId", foundRecord)
         assertEquals(300.0, foundRecord?.energy?.inKilocalories ?: 0.0, 0.1)
     }
 
@@ -298,6 +283,7 @@ class HealthConnectIntegrationTest {
         val expectedFat = 20.0
 
         val mealId = UUID.randomUUID().toString()
+        createdMealIds.add(mealId)
         val nutritionId = UUID.randomUUID().toString()
         val testMeal = MealLogEntity(
             id = mealId,
@@ -347,11 +333,12 @@ class HealthConnectIntegrationTest {
         // Step 4: Verify
         println("=== Step 4: Verifying data ===")
         val matchingRecord = records.firstOrNull { record ->
-            val caloriesMatch = (record.energy?.inKilocalories ?: 0.0) == expectedCalories
+            val clientRecordIdMatch = record.metadata.clientRecordId == mealId
             println(
-                "Record calories: ${record.energy?.inKilocalories}, expected: $expectedCalories, match: $caloriesMatch"
+                "Record clientRecordId: ${record.metadata.clientRecordId}, expected: $mealId, " +
+                    "match: $clientRecordIdMatch"
             )
-            caloriesMatch
+            clientRecordIdMatch
         }
 
         assertNotNull("Should find matching record", matchingRecord)
@@ -389,6 +376,7 @@ class HealthConnectIntegrationTest {
         }
 
         val mealId = UUID.randomUUID().toString()
+        createdMealIds.add(mealId)
         val nutritionId = UUID.randomUUID().toString()
         val testMeal = MealLogEntity(
             id = mealId,

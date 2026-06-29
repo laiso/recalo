@@ -498,6 +498,7 @@ fun HomeScreen(
     var showSourceSelection by remember { mutableStateOf(false) }
     var showPreviousMealSearch by remember { mutableStateOf(false) }
     var cameraImageUri by remember { mutableStateOf<Uri?>(null) }
+    var cameraImageFile by remember { mutableStateOf<File?>(null) }
     var showEditDialog by remember { mutableStateOf<String?>(null) }
 
     var hasCameraPermission by remember {
@@ -559,7 +560,8 @@ fun HomeScreen(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
         if (success) {
-            cameraImageUri?.let { uri ->
+            cameraImageFile?.let { file ->
+                val uri = Uri.fromFile(file)
                 if (sessionManager.getOpenAIKey().isNullOrBlank()) {
                     showSettingsDialog = true
                 } else {
@@ -567,6 +569,9 @@ fun HomeScreen(
                     viewModel.uploadImage(context, uri, targetCapturedAt)
                 }
             }
+        } else {
+            cameraImageFile = null
+            cameraImageUri = null
         }
     }
 
@@ -820,6 +825,7 @@ fun HomeScreen(
                                             file
                                         )
                                         cameraImageUri = uri
+                                        cameraImageFile = file
                                         cameraLauncher.launch(uri)
                                     }
                                 },

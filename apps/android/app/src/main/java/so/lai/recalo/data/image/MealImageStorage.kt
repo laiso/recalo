@@ -6,7 +6,10 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 
@@ -24,9 +27,10 @@ object MealImageStorage {
         require(maxEdgePx > 0) { "maxEdgePx must be positive" }
         require(jpegQuality in 0..100) { "jpegQuality must be between 0 and 100" }
 
-        val orientation = readExifOrientation(context, uri)
-        val bounds = readImageBounds(context, uri)
-        val decodedBitmap = decodeBitmap(context, uri, bounds, maxEdgePx)
+        val imageBytes = readImageBytes(context, uri)
+        val orientation = readExifOrientation(imageBytes)
+        val bounds = readImageBounds(imageBytes)
+        val decodedBitmap = decodeBitmap(imageBytes, bounds, maxEdgePx)
         var workingBitmap: Bitmap? = decodedBitmap
 
         return try {
@@ -65,14 +69,57 @@ object MealImageStorage {
         return File(directory, fileName)
     }
 
-    private fun readImageBounds(context: Context, uri: Uri): BitmapFactory.Options {
+    private fun readImageBytes(context: Context, uri: Uri): ByteArray {
+        val resolver = context.contentResolver
+
+        runCatching {
+            resolver.openInputStream(uri)?.use { input ->
+                return input.readBytes()
+            }
+        }
+
+        runCatching {
+            resolver.openTypedAssetFileDescriptor(uri, "image/*", null)?.use { descriptor ->
+                FileInputStream(descriptor.fileDescriptor).use { input ->
+                    input.channel.position(descriptor.startOffset)
+                    return input.readDescriptorBytes(descriptor.declaredLength)
+                }
+            }
+        }
+
+        runCatching {
+            resolver.openAssetFileDescriptor(uri, "r")?.use { descriptor ->
+                FileInputStream(descriptor.fileDescriptor).use { input ->
+                    input.channel.position(descriptor.startOffset)
+                    return input.readDescriptorBytes(descriptor.declaredLength)
+                }
+            }
+        }
+
+        throw IOException("Unable to open image")
+    }
+
+    private fun FileInputStream.readDescriptorBytes(declaredLength: Long): ByteArray {
+        if (declaredLength < 0) return readBytes()
+
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var remaining = declaredLength
+        while (remaining > 0) {
+            val read = read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+            if (read == -1) break
+            output.write(buffer, 0, read)
+            remaining -= read
+        }
+        return output.toByteArray()
+    }
+
+    private fun readImageBounds(imageBytes: ByteArray): BitmapFactory.Options {
         val options = BitmapFactory.Options().apply {
             inJustDecodeBounds = true
         }
 
-        context.contentResolver.openInputStream(uri)?.use { input ->
-            BitmapFactory.decodeStream(input, null, options)
-        } ?: throw IOException("Unable to open image")
+        BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, options)
 
         if (options.outWidth <= 0 || options.outHeight <= 0) {
             throw IOException("Unable to decode image bounds")
@@ -82,8 +129,7 @@ object MealImageStorage {
     }
 
     private fun decodeBitmap(
-        context: Context,
-        uri: Uri,
+        imageBytes: ByteArray,
         bounds: BitmapFactory.Options,
         maxEdgePx: Int
     ): Bitmap {
@@ -91,9 +137,8 @@ object MealImageStorage {
             inSampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, maxEdgePx)
         }
 
-        return context.contentResolver.openInputStream(uri)?.use { input ->
-            BitmapFactory.decodeStream(input, null, options)
-        } ?: throw IOException("Unable to open image")
+        return BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, options)
+            ?: throw IOException("Unable to decode image")
     }
 
     private fun calculateInSampleSize(width: Int, height: Int, maxEdgePx: Int): Int {
@@ -114,14 +159,14 @@ object MealImageStorage {
         return Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
     }
 
-    private fun readExifOrientation(context: Context, uri: Uri): Int {
+    private fun readExifOrientation(imageBytes: ByteArray): Int {
         return try {
-            context.contentResolver.openInputStream(uri)?.use { input ->
+            ByteArrayInputStream(imageBytes).use { input ->
                 ExifInterface(input).getAttributeInt(
                     ExifInterface.TAG_ORIENTATION,
                     ExifInterface.ORIENTATION_NORMAL
                 )
-            } ?: ExifInterface.ORIENTATION_NORMAL
+            }
         } catch (_: IOException) {
             ExifInterface.ORIENTATION_NORMAL
         }
