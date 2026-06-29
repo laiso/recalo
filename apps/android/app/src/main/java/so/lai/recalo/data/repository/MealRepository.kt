@@ -5,9 +5,9 @@ import android.net.Uri
 import android.util.Log
 import androidx.room.withTransaction
 import java.io.File
-import java.io.FileOutputStream
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
+import so.lai.recalo.data.image.MealImageStorage
 import so.lai.recalo.data.local.CaroliDatabase
 import so.lai.recalo.data.local.dao.MealDao
 import so.lai.recalo.data.local.entity.MealItemEntity
@@ -39,8 +39,8 @@ class MealRepository(
         capturedAt: Long? = null
     ): Result<MealLogEntity> {
         return try {
-            val imageFile = copyImageToInternalStorage(context, imageUri)
-            Log.d(TAG, "Image copied to: ${imageFile.absolutePath}")
+            val imageFile = MealImageStorage.saveCompressedJpeg(context, imageUri)
+            Log.d(TAG, "Image compressed and saved to: ${imageFile.absolutePath}")
 
             val mealId = UUID.randomUUID().toString()
             val mealEntity = MealLogEntity(
@@ -149,20 +149,6 @@ class MealRepository(
             Log.e(TAG, "Upload and analyze failed", e)
             Result.failure(e)
         }
-    }
-
-    private fun copyImageToInternalStorage(context: Context, uri: Uri): File {
-        val fileName = "meal_${System.currentTimeMillis()}.jpg"
-        val file = File(context.filesDir, "images/$fileName")
-        file.parentFile?.mkdirs()
-
-        context.contentResolver.openInputStream(uri)?.use { input ->
-            FileOutputStream(file).use { output ->
-                input.copyTo(output)
-            }
-        }
-
-        return file
     }
 
     suspend fun deleteMeal(mealId: String) {
