@@ -10,8 +10,5 @@
     <!-- Explicitly trust OpenAI API domain -->
     <domain-config cleartextTrafficPermitted="false">
         <domain includeSubdomains="true">api.openai.com</domain>
-        <pin-set expiration="2027-01-01">
-            <!-- OpenAI certificate pinning (optional) -->
-        </pin-set>
     </domain-config>
 </network-security-config>

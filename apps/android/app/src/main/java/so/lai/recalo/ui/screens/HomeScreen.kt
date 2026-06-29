@@ -24,6 +24,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -35,12 +37,14 @@ import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -48,6 +52,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -67,6 +72,7 @@ import coil.compose.AsyncImage
 import java.io.File
 import java.time.LocalDate
 import java.time.ZoneId
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import so.lai.recalo.data.api.AiConfig
@@ -109,10 +115,15 @@ class HomeViewModel(
     var meals by mutableStateOf<List<MealWithNutrition>>(emptyList())
     var isLoading by mutableStateOf(false)
     var isUploading by mutableStateOf(false)
+    var isSearchingPreviousMeals by mutableStateOf(false)
+    var isDuplicatingPreviousMeal by mutableStateOf(false)
     var isHealthConnectSyncing by mutableStateOf(false)
     var healthConnectMessage by mutableStateOf<String?>(null)
     var authError by mutableStateOf(false)
     var saveState by mutableStateOf<SaveState>(SaveState.Idle)
+    var previousMealSearchQuery by mutableStateOf("")
+    var previousMealSearchResults by mutableStateOf<List<MealWithNutrition>>(emptyList())
+    var previousMealSearchError by mutableStateOf<String?>(null)
     var pendingHealthConnectData by mutableStateOf<MealWithNutrition?>(null)
     var hasHealthConnectPermissions by mutableStateOf<Boolean?>(null)
         private set
@@ -120,6 +131,7 @@ class HomeViewModel(
     private val logTag = "HomeViewModel"
     private lateinit var mealRepository: MealRepository
     private var _healthConnectManager: HealthConnectManager? = null
+    private var previousMealSearchSequence = 0
 
     val healthConnectManager: HealthConnectManager?
         get() = _healthConnectManager
@@ -211,6 +223,64 @@ class HomeViewModel(
                 currentScreenState = ScreenState.IDLE
             } finally {
                 isUploading = false
+            }
+        }
+    }
+
+    fun searchPreviousMeals(query: String) {
+        previousMealSearchQuery = query
+        previousMealSearchError = null
+        val searchSequence = ++previousMealSearchSequence
+
+        if (query.isBlank()) {
+            previousMealSearchResults = emptyList()
+            isSearchingPreviousMeals = false
+            return
+        }
+
+        viewModelScope.launch {
+            isSearchingPreviousMeals = true
+            try {
+                val results = mealRepository.searchPreviousMeals(query)
+                if (searchSequence == previousMealSearchSequence) {
+                    previousMealSearchResults = results
+                }
+            } catch (e: Exception) {
+                Log.e(logTag, "Previous meal search failed", e)
+                if (searchSequence == previousMealSearchSequence) {
+                    previousMealSearchResults = emptyList()
+                    previousMealSearchError = e.message ?: "Search failed."
+                }
+            } finally {
+                if (searchSequence == previousMealSearchSequence) {
+                    isSearchingPreviousMeals = false
+                }
+            }
+        }
+    }
+
+    fun clearPreviousMealSearch() {
+        previousMealSearchSequence++
+        previousMealSearchQuery = ""
+        previousMealSearchResults = emptyList()
+        previousMealSearchError = null
+        isSearchingPreviousMeals = false
+    }
+
+    fun duplicatePreviousMeal(sourceMeal: MealWithNutrition, capturedAt: Long): Job {
+        return viewModelScope.launch {
+            isDuplicatingPreviousMeal = true
+            previousMealSearchError = null
+            try {
+                mealRepository.duplicateMealFromHistory(sourceMeal, capturedAt)
+                healthConnectMessage = "Added meal from history."
+                clearPreviousMealSearch()
+                currentScreenState = ScreenState.IDLE
+            } catch (e: Exception) {
+                Log.e(logTag, "Previous meal duplication failed", e)
+                previousMealSearchError = e.message ?: "Failed to add meal."
+            } finally {
+                isDuplicatingPreviousMeal = false
             }
         }
     }
@@ -426,6 +496,7 @@ fun HomeScreen(
     val scope = rememberCoroutineScope()
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showSourceSelection by remember { mutableStateOf(false) }
+    var showPreviousMealSearch by remember { mutableStateOf(false) }
     var cameraImageUri by remember { mutableStateOf<Uri?>(null) }
     var showEditDialog by remember { mutableStateOf<String?>(null) }
 
@@ -464,6 +535,12 @@ fun HomeScreen(
         java.time.ZonedDateTime.now().minusHours(so.lai.recalo.data.api.SessionManager.DEFAULT_DAY_START_HOUR.toLong()).toLocalDate()
     }
     val targetDate = baseToday.plusDays(selectedDateOffset.toLong())
+    val targetCapturedAt = remember(targetDate) {
+        targetDate.atTime(so.lai.recalo.data.api.SessionManager.DEFAULT_DAY_START_HOUR, 0)
+            .atZone(ZoneId.systemDefault())
+            .toInstant()
+            .toEpochMilli()
+    }
 
     val imageLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -472,12 +549,8 @@ fun HomeScreen(
             if (sessionManager.getOpenAIKey().isNullOrBlank()) {
                 showSettingsDialog = true
             } else {
-                val capturedAt = targetDate.atTime(so.lai.recalo.data.api.SessionManager.DEFAULT_DAY_START_HOUR, 0)
-                    .atZone(ZoneId.systemDefault())
-                    .toInstant()
-                    .toEpochMilli()
                 viewModel.startAnalysis(it)
-                viewModel.uploadImage(context, it, capturedAt)
+                viewModel.uploadImage(context, it, targetCapturedAt)
             }
         }
     }
@@ -490,12 +563,8 @@ fun HomeScreen(
                 if (sessionManager.getOpenAIKey().isNullOrBlank()) {
                     showSettingsDialog = true
                 } else {
-                    val capturedAt = targetDate.atTime(so.lai.recalo.data.api.SessionManager.DEFAULT_DAY_START_HOUR, 0)
-                        .atZone(ZoneId.systemDefault())
-                        .toInstant()
-                        .toEpochMilli()
                     viewModel.startAnalysis(uri)
-                    viewModel.uploadImage(context, uri, capturedAt)
+                    viewModel.uploadImage(context, uri, targetCapturedAt)
                 }
             }
         }
@@ -562,15 +631,7 @@ fun HomeScreen(
             if (viewModel.currentScreenState == ScreenState.IDLE) {
                 FloatingActionButton(
                     onClick = {
-                        if (sessionManager.getOpenAIKey().isNullOrBlank()) {
-                            showSettingsDialog = true
-                        } else {
-                            if (hasCameraPermission) {
-                                showSourceSelection = true
-                            } else {
-                                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                            }
-                        }
+                        showSourceSelection = true
                     },
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary
@@ -740,20 +801,27 @@ fun HomeScreen(
                         ) {
                             Button(
                                 onClick = {
-                                    showSourceSelection = false
-                                    val dir = File(context.cacheDir, "images")
-                                    dir.mkdirs()
-                                    val file = File(
-                                        dir,
-                                        "capture_${System.currentTimeMillis()}.jpg"
-                                    )
-                                    val uri = FileProvider.getUriForFile(
-                                        context,
-                                        "${context.packageName}.fileprovider",
-                                        file
-                                    )
-                                    cameraImageUri = uri
-                                    cameraLauncher.launch(uri)
+                                    if (sessionManager.getOpenAIKey().isNullOrBlank()) {
+                                        showSourceSelection = false
+                                        showSettingsDialog = true
+                                    } else if (!hasCameraPermission) {
+                                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                    } else {
+                                        showSourceSelection = false
+                                        val dir = File(context.cacheDir, "images")
+                                        dir.mkdirs()
+                                        val file = File(
+                                            dir,
+                                            "capture_${System.currentTimeMillis()}.jpg"
+                                        )
+                                        val uri = FileProvider.getUriForFile(
+                                            context,
+                                            "${context.packageName}.fileprovider",
+                                            file
+                                        )
+                                        cameraImageUri = uri
+                                        cameraLauncher.launch(uri)
+                                    }
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -775,12 +843,17 @@ fun HomeScreen(
 
                             OutlinedButton(
                                 onClick = {
-                                    showSourceSelection = false
-                                    imageLauncher.launch(
-                                        androidx.activity.result.PickVisualMediaRequest(
-                                            ActivityResultContracts.PickVisualMedia.ImageOnly
+                                    if (sessionManager.getOpenAIKey().isNullOrBlank()) {
+                                        showSourceSelection = false
+                                        showSettingsDialog = true
+                                    } else {
+                                        showSourceSelection = false
+                                        imageLauncher.launch(
+                                            androidx.activity.result.PickVisualMediaRequest(
+                                                ActivityResultContracts.PickVisualMedia.ImageOnly
+                                            )
                                         )
-                                    )
+                                    }
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -798,9 +871,50 @@ fun HomeScreen(
                                     style = MaterialTheme.typography.titleMedium
                                 )
                             }
+
+                            OutlinedButton(
+                                onClick = {
+                                    showSourceSelection = false
+                                    showPreviousMealSearch = true
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(56.dp),
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Search,
+                                    contentDescription = "Search previous meals",
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    "Search Previous Meal",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                            }
                         }
                     },
                     shape = RoundedCornerShape(24.dp)
+                )
+            }
+
+            if (showPreviousMealSearch) {
+                PreviousMealSearchDialog(
+                    query = viewModel.previousMealSearchQuery,
+                    results = viewModel.previousMealSearchResults,
+                    isSearching = viewModel.isSearchingPreviousMeals,
+                    isDuplicating = viewModel.isDuplicatingPreviousMeal,
+                    errorMessage = viewModel.previousMealSearchError,
+                    onQueryChange = viewModel::searchPreviousMeals,
+                    onMealSelected = { meal ->
+                        viewModel.duplicatePreviousMeal(meal, targetCapturedAt)
+                        showPreviousMealSearch = false
+                    },
+                    onDismiss = {
+                        showPreviousMealSearch = false
+                        viewModel.clearPreviousMealSearch()
+                    }
                 )
             }
 
@@ -818,6 +932,225 @@ fun HomeScreen(
                         viewModel.editItemQuantity(itemId, ratio)
                         showEditDialog = null
                     }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalComposeUiApi::class)
+private fun PreviousMealSearchDialog(
+    query: String,
+    results: List<MealWithNutrition>,
+    isSearching: Boolean,
+    isDuplicating: Boolean,
+    errorMessage: String?,
+    onQueryChange: (String) -> Unit,
+    onMealSelected: (MealWithNutrition) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val searchFocusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    LaunchedEffect(Unit) {
+        delay(250)
+        searchFocusRequester.requestFocus()
+        keyboardController?.show()
+    }
+
+    AlertDialog(
+        onDismissRequest = {
+            if (!isDuplicating) onDismiss()
+        },
+        title = {
+            Text(
+                text = "Search Previous Meal",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 520.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(searchFocusRequester),
+                    singleLine = true,
+                    label = { Text("Food or meal name") },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = null
+                        )
+                    },
+                    enabled = !isDuplicating
+                )
+
+                when {
+                    isSearching || isDuplicating -> {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 16.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                text = if (isDuplicating) "Adding meal..." else "Searching...",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+
+                    errorMessage != null -> {
+                        Text(
+                            text = errorMessage,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+
+                    query.isBlank() -> {
+                        Text(
+                            text = "Enter a food or meal name.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    results.isEmpty() -> {
+                        Text(
+                            text = "No matching meals found.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    else -> {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(results, key = { it.meal.id }) { mealWithNutrition ->
+                                PreviousMealSearchResultRow(
+                                    mealWithNutrition = mealWithNutrition,
+                                    enabled = !isDuplicating,
+                                    onClick = { onMealSelected(mealWithNutrition) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !isDuplicating
+            ) {
+                Text("Cancel")
+            }
+        },
+        shape = RoundedCornerShape(24.dp)
+    )
+}
+
+@Composable
+private fun PreviousMealSearchResultRow(
+    mealWithNutrition: MealWithNutrition,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val nutrition = mealWithNutrition.nutritionResult
+    val title = nutrition?.title?.takeIf { it.isNotBlank() } ?: "Untitled Meal"
+    val itemNames = mealWithNutrition.items.orEmpty()
+        .map { it.mealItem.name }
+        .filter { it.isNotBlank() }
+        .distinct()
+        .joinToString(", ")
+    val dateText = remember(mealWithNutrition.meal.capturedAt) {
+        mealWithNutrition.meal.capturedAt?.let { capturedAt ->
+            java.time.Instant.ofEpochMilli(capturedAt)
+                .atZone(ZoneId.systemDefault())
+                .toLocalDate()
+                .format(java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy"))
+        } ?: "No date"
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            mealWithNutrition.meal.imagePath?.let { imagePath ->
+                AsyncImage(
+                    model = File(imagePath),
+                    contentDescription = title,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp)
+                        .clip(RoundedCornerShape(10.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            }
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "${nutrition?.calories ?: 0} kcal",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                if (itemNames.isNotBlank()) {
+                    Text(
+                        text = itemNames,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Text(
+                    text = dateText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }

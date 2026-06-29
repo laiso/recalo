@@ -22,6 +22,20 @@ interface MealDao {
     @Query("SELECT * FROM meal_logs WHERE id = :mealId")
     suspend fun getMealWithNutritionById(mealId: String): MealWithNutrition?
 
+    @Transaction
+    @Query(
+        """
+        SELECT DISTINCT meal_logs.*
+        FROM meal_logs
+        INNER JOIN nutrition_results ON nutrition_results.mealLogId = meal_logs.id
+        LEFT JOIN meal_items ON meal_items.nutritionResultId = nutrition_results.id
+        WHERE nutrition_results.title LIKE '%' || :query || '%' COLLATE NOCASE
+            OR meal_items.name LIKE '%' || :query || '%' COLLATE NOCASE
+        ORDER BY COALESCE(meal_logs.capturedAt, meal_logs.createdAt, 0) DESC
+        """
+    )
+    suspend fun searchMealsByFoodName(query: String): List<MealWithNutrition>
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertMeal(meal: MealLogEntity)
 
@@ -45,6 +59,9 @@ interface MealDao {
 
     @Query("SELECT * FROM meal_logs WHERE id = :mealId")
     suspend fun getMealById(mealId: String): MealLogEntity?
+
+    @Query("SELECT COUNT(*) FROM meal_logs WHERE imagePath = :imagePath")
+    suspend fun countMealsByImagePath(imagePath: String): Int
 
     @Update
     suspend fun updateMealItem(item: MealItemEntity)

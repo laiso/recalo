@@ -13,6 +13,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import so.lai.recalo.data.local.CaroliDatabase
+import so.lai.recalo.data.local.entity.MealItemEntity
 import so.lai.recalo.data.local.entity.MealLogEntity
 import so.lai.recalo.data.local.entity.NutritionResultEntity
 
@@ -157,6 +158,189 @@ class MealDaoTest {
         assertNotNull(latest)
         assertEquals(meal2.id, latest?.meal?.id)
         assertEquals(500, latest?.nutritionResult?.calories)
+    }
+
+    @Test
+    fun `searchMealsByFoodName finds meals by title and item name without duplicates`() = runTest {
+        val curryMeal = MealLogEntity(
+            id = "meal-curry",
+            imageUrl = null,
+            capturedAt = 3000L,
+            imagePath = null,
+            analysisStatus = "completed"
+        )
+        val proteinMeal = MealLogEntity(
+            id = "meal-protein",
+            imageUrl = null,
+            capturedAt = 2000L,
+            imagePath = null,
+            analysisStatus = "completed"
+        )
+        dao.insertMeal(curryMeal)
+        dao.insertMeal(proteinMeal)
+
+        dao.insertNutritionResult(
+            NutritionResultEntity(
+                id = "nutrition-curry",
+                mealLogId = curryMeal.id,
+                title = "Curry Rice",
+                calories = 700,
+                confidence = 0.9
+            )
+        )
+        dao.insertNutritionResult(
+            NutritionResultEntity(
+                id = "nutrition-protein",
+                mealLogId = proteinMeal.id,
+                title = "Breakfast",
+                calories = 180,
+                confidence = 0.8
+            )
+        )
+
+        dao.insertMealItem(
+            MealItemEntity(
+                id = "item-curry",
+                nutritionResultId = "nutrition-curry",
+                name = "Curry",
+                quantity = "1 plate",
+                calories = 700
+            )
+        )
+        dao.insertMealItem(
+            MealItemEntity(
+                id = "item-protein",
+                nutritionResultId = "nutrition-protein",
+                name = "Protein Shake",
+                quantity = "1 cup",
+                calories = 180
+            )
+        )
+
+        val curryResults = dao.searchMealsByFoodName("curry")
+        assertEquals(1, curryResults.size)
+        assertEquals("meal-curry", curryResults.first().meal.id)
+
+        val proteinResults = dao.searchMealsByFoodName("protein")
+        assertEquals(1, proteinResults.size)
+        assertEquals("meal-protein", proteinResults.first().meal.id)
+    }
+
+    @Test
+    fun `searchMealsByFoodName finds previous meals by meal and food names`() = runTest {
+        dao.insertMeal(
+            MealLogEntity(
+                id = "meal-curry-rice",
+                imageUrl = null,
+                capturedAt = 1000L,
+                imagePath = null,
+                analysisStatus = "completed"
+            )
+        )
+        dao.insertMeal(
+            MealLogEntity(
+                id = "meal-natto-rice",
+                imageUrl = null,
+                capturedAt = 2000L,
+                imagePath = null,
+                analysisStatus = "completed"
+            )
+        )
+        dao.insertMeal(
+            MealLogEntity(
+                id = "meal-created-only-rice",
+                imageUrl = null,
+                capturedAt = null,
+                imagePath = null,
+                analysisStatus = "completed",
+                createdAt = 3000L
+            )
+        )
+
+        dao.insertNutritionResult(
+            NutritionResultEntity(
+                id = "nutrition-curry-rice",
+                mealLogId = "meal-curry-rice",
+                title = "Curry Rice",
+                calories = 750,
+                confidence = 0.9
+            )
+        )
+        dao.insertNutritionResult(
+            NutritionResultEntity(
+                id = "nutrition-natto-rice",
+                mealLogId = "meal-natto-rice",
+                title = "Natto Rice",
+                calories = 430,
+                confidence = 0.85
+            )
+        )
+        dao.insertNutritionResult(
+            NutritionResultEntity(
+                id = "nutrition-created-only-rice",
+                mealLogId = "meal-created-only-rice",
+                title = "Egg Rice",
+                calories = 500,
+                confidence = 0.8
+            )
+        )
+
+        dao.insertMealItem(
+            MealItemEntity(
+                id = "item-curry",
+                nutritionResultId = "nutrition-curry-rice",
+                name = "Curry",
+                quantity = "1 plate",
+                calories = 450
+            )
+        )
+        dao.insertMealItem(
+            MealItemEntity(
+                id = "item-curry-rice",
+                nutritionResultId = "nutrition-curry-rice",
+                name = "Rice",
+                quantity = "1 bowl",
+                calories = 300
+            )
+        )
+        dao.insertMealItem(
+            MealItemEntity(
+                id = "item-natto",
+                nutritionResultId = "nutrition-natto-rice",
+                name = "Natto",
+                quantity = "1 pack",
+                calories = 100
+            )
+        )
+        dao.insertMealItem(
+            MealItemEntity(
+                id = "item-natto-rice",
+                nutritionResultId = "nutrition-natto-rice",
+                name = "Rice",
+                quantity = "1 bowl",
+                calories = 330
+            )
+        )
+        dao.insertMealItem(
+            MealItemEntity(
+                id = "item-created-only-rice",
+                nutritionResultId = "nutrition-created-only-rice",
+                name = "Rice",
+                quantity = "1 bowl",
+                calories = 300
+            )
+        )
+
+        val curryResults = dao.searchMealsByFoodName("curry")
+        assertEquals(listOf("meal-curry-rice"), curryResults.map { it.meal.id })
+
+        val riceResults = dao.searchMealsByFoodName("rice")
+        assertEquals(
+            listOf("meal-created-only-rice", "meal-natto-rice", "meal-curry-rice"),
+            riceResults.map { it.meal.id }
+        )
+
+        assertTrue(dao.searchMealsByFoodName("pizza-zzz").isEmpty())
     }
 
     @Test
