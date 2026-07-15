@@ -53,6 +53,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -78,9 +79,11 @@ import kotlinx.coroutines.launch
 import so.lai.recalo.data.api.AiConfig
 import so.lai.recalo.data.api.SessionManager
 import so.lai.recalo.data.local.CaroliDatabase
+import so.lai.recalo.data.local.entity.MealLogEntity
 import so.lai.recalo.data.local.entity.NutritionResultEntity
 import so.lai.recalo.data.local.model.MealItemWithNutrients
 import so.lai.recalo.data.local.model.MealWithNutrition
+import so.lai.recalo.data.repository.AnalysisErrorCode
 import so.lai.recalo.data.repository.MealRepository
 import so.lai.recalo.health.HealthConnectManager
 import so.lai.recalo.ui.components.EditRatioDialog
@@ -281,6 +284,26 @@ class HomeViewModel(
                 previousMealSearchError = e.message ?: "Failed to add meal."
             } finally {
                 isDuplicatingPreviousMeal = false
+            }
+        }
+    }
+
+    fun retryAnalysis(mealId: String) {
+        val openaiKey = sessionManager.getOpenAIKey()
+        if (openaiKey.isNullOrEmpty() || !this::mealRepository.isInitialized) {
+            return
+        }
+
+        viewModelScope.launch {
+            isUploading = true
+            try {
+                mealRepository.retryAnalysis(
+                    mealId = mealId,
+                    openAiApiKey = openaiKey,
+                    modelName = sessionManager.getModelName()
+                )
+            } finally {
+                isUploading = false
             }
         }
     }
@@ -697,6 +720,7 @@ fun HomeScreen(
                                     viewModel.selectedMeal = meal
                                     viewModel.currentScreenState = ScreenState.DETAIL
                                 },
+                                onRetryClick = { mealId -> viewModel.retryAnalysis(mealId) },
                                 onLogoutClick = { showSettingsDialog = true },
                                 isLoading = viewModel.isLoading
                             )
@@ -1179,6 +1203,7 @@ private fun IdleScreen(
     onPreviousDayClick: () -> Unit,
     onNextDayClick: () -> Unit,
     onMealClick: (MealWithNutrition) -> Unit,
+    onRetryClick: (String) -> Unit,
     onLogoutClick: () -> Unit,
     isLoading: Boolean
 ) {
@@ -1421,7 +1446,8 @@ private fun IdleScreen(
                 items(targetMeals) { mealWithNutrition ->
                     MealCard(
                         mealWithNutrition = mealWithNutrition,
-                        onClick = { onMealClick(mealWithNutrition) }
+                        onClick = { onMealClick(mealWithNutrition) },
+                        onRetry = { onRetryClick(mealWithNutrition.meal.id) }
                     )
                 }
             }
@@ -1555,16 +1581,26 @@ private fun MealImageFullscreenDialog(
 @Composable
 private fun MealCard(
     mealWithNutrition: MealWithNutrition,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onRetry: () -> Unit
 ) {
     var showFullscreenImage by remember { mutableStateOf(false) }
     val meal = mealWithNutrition.meal
     val nutrition = mealWithNutrition.nutritionResult
+    val errorPresentation = mealWithNutrition.analysisErrorPresentation()
+    val isAnalyzing = meal.analysisStatus == MealLogEntity.AnalysisStatus.ANALYZING
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() },
+            .testTag(
+                when {
+                    errorPresentation != null -> "analysis_error_card"
+                    isAnalyzing -> "analysis_in_progress_card"
+                    else -> "meal_card"
+                }
+            )
+            .clickable(enabled = errorPresentation == null && !isAnalyzing) { onClick() },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
@@ -1591,6 +1627,48 @@ private fun MealCard(
             }
 
             Column(modifier = Modifier.weight(1f)) {
+                if (isAnalyzing) {
+                    Text(
+                        text = "Analyzing meal",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Nutrition results will appear when the analysis is complete.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    return@Column
+                }
+
+                if (errorPresentation != null) {
+                    Text(
+                        text = errorPresentation.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = errorPresentation.message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.testTag("analysis_error_reason")
+                    )
+                    if (errorPresentation.retryable) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        TextButton(
+                            onClick = onRetry,
+                            modifier = Modifier.testTag("analysis_retry_button")
+                        ) {
+                            Text("Try again")
+                        }
+                    }
+                    return@Column
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1645,6 +1723,24 @@ private fun MealCard(
             onDismiss = { showFullscreenImage = false }
         )
     }
+}
+
+data class AnalysisErrorPresentation(
+    val title: String,
+    val message: String,
+    val retryable: Boolean
+)
+
+fun MealWithNutrition.analysisErrorPresentation(): AnalysisErrorPresentation? {
+    if (meal.analysisStatus != MealLogEntity.AnalysisStatus.ERROR) {
+        return null
+    }
+    val code = AnalysisErrorCode.fromStoredValue(meal.analysisError)
+    return AnalysisErrorPresentation(
+        title = "Analysis failed",
+        message = code.userMessage,
+        retryable = code.retryable
+    )
 }
 
 @Composable

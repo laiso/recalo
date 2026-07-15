@@ -5,6 +5,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.room.withTransaction
 import java.io.File
+import java.io.FileNotFoundException
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import so.lai.recalo.data.image.MealImageStorage
@@ -15,12 +16,15 @@ import so.lai.recalo.data.local.entity.MealLogEntity
 import so.lai.recalo.data.local.entity.NutrientEntity
 import so.lai.recalo.data.local.entity.NutritionResultEntity
 import so.lai.recalo.data.local.model.MealWithNutrition
-import so.lai.recalo.data.openai.ModelAccessDeniedException
+import so.lai.recalo.data.openai.NutritionAnalyzerFactory
 import so.lai.recalo.data.openai.OpenAiService
 
 class MealRepository(
     private val dao: MealDao,
-    private val database: CaroliDatabase? = null
+    private val database: CaroliDatabase? = null,
+    private val analyzerFactory: NutritionAnalyzerFactory = NutritionAnalyzerFactory { apiKey ->
+        OpenAiService(apiKey = apiKey)
+    }
 ) {
     companion object {
         private const val TAG = "MealRepository"
@@ -75,10 +79,55 @@ class MealRepository(
             dao.insertMeal(mealEntity)
             Log.d(TAG, "Meal entity inserted with ID: $mealId")
 
-            val openAiService = OpenAiService(apiKey = openAiApiKey)
+            analyzeMeal(mealEntity, openAiApiKey, modelName)
+        } catch (e: Exception) {
+            Log.e(TAG, "Upload and analyze failed", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun retryAnalysis(
+        mealId: String,
+        openAiApiKey: String,
+        modelName: String = "gpt-4o-mini"
+    ): Result<MealLogEntity> {
+        val meal = dao.getMealById(mealId)
+            ?: return Result.failure(IllegalArgumentException("Meal not found"))
+        val imagePath = meal.imagePath
+        if (imagePath.isNullOrBlank() || !File(imagePath).isFile) {
+            dao.updateMeal(
+                meal.copy(
+                    analysisStatus = MealLogEntity.AnalysisStatus.ERROR,
+                    analysisError = AnalysisErrorCode.IMAGE_UNAVAILABLE.name
+                )
+            )
+            return Result.failure(FileNotFoundException("Meal image is missing"))
+        }
+
+        val retryStarted = dao.beginAnalysisRetry(mealId) == 1
+        if (!retryStarted) {
+            return Result.failure(IllegalStateException("Meal analysis is not retryable"))
+        }
+
+        val analyzingMeal = meal.copy(
+            analysisStatus = MealLogEntity.AnalysisStatus.ANALYZING,
+            analysisError = null,
+            analysisCompletedAt = null,
+            needsModelUpdateNotice = false
+        )
+        return analyzeMeal(analyzingMeal, openAiApiKey, modelName)
+    }
+
+    private suspend fun analyzeMeal(
+        mealEntity: MealLogEntity,
+        openAiApiKey: String,
+        modelName: String
+    ): Result<MealLogEntity> {
+        return try {
+            val analyzer = analyzerFactory.create(openAiApiKey)
             val currentLanguage = java.util.Locale.getDefault().displayLanguage
-            val analysisResult = openAiService.analyzeNutrition(
-                imagePath = imageFile.absolutePath,
+            val analysisResult = analyzer.analyzeNutrition(
+                imagePath = requireNotNull(mealEntity.imagePath),
                 modelName = modelName,
                 language = currentLanguage
             )
@@ -89,16 +138,14 @@ class MealRepository(
                 val resultId = UUID.randomUUID().toString()
                 val nutritionEntity = NutritionResultEntity(
                     id = resultId,
-                    mealLogId = mealId,
+                    mealLogId = mealEntity.id,
                     title = nutritionData.title ?: "Untitled Meal",
                     calories = nutritionData.calories.toInt(),
                     confidence = nutritionData.confidence
                 )
 
-                dao.insertNutritionResult(nutritionEntity)
-                Log.d(TAG, "Nutrition result inserted for meal: $mealId")
-
                 val allNutrients = mutableListOf<NutrientEntity>()
+                val mealItems = mutableListOf<MealItemEntity>()
 
                 nutritionData.nutrients.forEach { n ->
                     allNutrients.add(
@@ -122,7 +169,7 @@ class MealRepository(
                         quantity = item.quantity,
                         calories = item.calories.toInt()
                     )
-                    dao.insertMealItem(mealItemEntity)
+                    mealItems.add(mealItemEntity)
 
                     item.nutrients.forEach { n ->
                         allNutrients.add(
@@ -138,17 +185,19 @@ class MealRepository(
                     }
                 }
 
-                if (allNutrients.isNotEmpty()) {
-                    dao.insertNutrients(allNutrients)
-                }
-
                 val updatedMeal = mealEntity.copy(
                     analysisStatus = MealLogEntity.AnalysisStatus.COMPLETED,
+                    analysisError = null,
                     analysisCompletedAt = System.currentTimeMillis(),
                     needsModelUpdateNotice = nutritionData.needsModelUpdateNotice
                 )
-                dao.updateMeal(updatedMeal)
-                Log.d(TAG, "Meal status updated to completed: $mealId")
+                dao.replaceAnalysisResult(
+                    meal = updatedMeal,
+                    result = nutritionEntity,
+                    items = mealItems,
+                    nutrients = allNutrients
+                )
+                Log.d(TAG, "Meal status updated to completed: ${mealEntity.id}")
 
                 Result.success(updatedMeal)
             } else {
@@ -157,17 +206,24 @@ class MealRepository(
 
                 val updatedMeal = mealEntity.copy(
                     analysisStatus = MealLogEntity.AnalysisStatus.ERROR,
-                    analysisError = when (error) {
-                        is ModelAccessDeniedException -> "Model access denied: ${error.requestedModel}"
-                        else -> error?.message ?: "Unknown error"
-                    }
+                    analysisError = error?.let(AnalysisErrorCode::fromThrowable)?.name
+                        ?: AnalysisErrorCode.UNKNOWN.name
                 )
                 dao.updateMeal(updatedMeal)
 
                 Result.failure(error ?: Exception("Analysis failed"))
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Upload and analyze failed", e)
+            Log.e(TAG, "Analysis failed with exception", e)
+            val updatedMeal = mealEntity.copy(
+                analysisStatus = MealLogEntity.AnalysisStatus.ERROR,
+                analysisError = AnalysisErrorCode.fromThrowable(e).name
+            )
+            try {
+                dao.updateMeal(updatedMeal)
+            } catch (databaseError: Exception) {
+                Log.e(TAG, "Failed to persist analysis error", databaseError)
+            }
             Result.failure(e)
         }
     }

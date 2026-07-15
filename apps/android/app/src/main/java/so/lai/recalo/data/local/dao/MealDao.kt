@@ -42,6 +42,22 @@ interface MealDao {
     @Update
     suspend fun updateMeal(meal: MealLogEntity)
 
+    @Query(
+        """
+        UPDATE meal_logs
+        SET analysisStatus = :analyzingStatus,
+            analysisError = NULL,
+            analysisCompletedAt = NULL,
+            needsModelUpdateNotice = 0
+        WHERE id = :mealId AND analysisStatus = :errorStatus
+        """
+    )
+    suspend fun beginAnalysisRetry(
+        mealId: String,
+        analyzingStatus: String = MealLogEntity.AnalysisStatus.ANALYZING,
+        errorStatus: String = MealLogEntity.AnalysisStatus.ERROR
+    ): Int
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertNutritionResult(result: NutritionResultEntity)
 
@@ -50,6 +66,25 @@ interface MealDao {
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertNutrients(nutrients: List<NutrientEntity>)
+
+    @Query("DELETE FROM nutrition_results WHERE mealLogId = :mealId")
+    suspend fun deleteNutritionResultByMealId(mealId: String)
+
+    @Transaction
+    suspend fun replaceAnalysisResult(
+        meal: MealLogEntity,
+        result: NutritionResultEntity,
+        items: List<MealItemEntity>,
+        nutrients: List<NutrientEntity>
+    ) {
+        deleteNutritionResultByMealId(meal.id)
+        insertNutritionResult(result)
+        items.forEach { insertMealItem(it) }
+        if (nutrients.isNotEmpty()) {
+            insertNutrients(nutrients)
+        }
+        updateMeal(meal)
+    }
 
     @Delete
     suspend fun deleteMeal(meal: MealLogEntity)
