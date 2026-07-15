@@ -67,6 +67,33 @@ class AnalysisFailureE2ETest {
     }
 
     @Test
+    fun `initial successful analysis persists one completed meal`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(200).setBody(successResponse))
+
+        val result = repository.uploadAndAnalyzeMeal(
+            context = context,
+            imageUri = Uri.fromFile(sourceImage),
+            openAiApiKey = "fake-key",
+            modelName = "test-model"
+        )
+
+        assertTrue(result.isSuccess)
+        val meals = repository.getAllMealsWithNutrition().first()
+        assertEquals(1, meals.size)
+        val completedMeal = meals.single()
+        assertEquals(result.getOrNull()?.id, completedMeal.meal.id)
+        assertEquals(MealLogEntity.AnalysisStatus.COMPLETED, completedMeal.meal.analysisStatus)
+        assertNull(completedMeal.meal.analysisError)
+        assertEquals(450, completedMeal.nutritionResult?.calories)
+        assertEquals("Grilled Salmon", completedMeal.nutritionResult?.title)
+        assertEquals(1, completedMeal.items?.size)
+        assertEquals("Salmon", completedMeal.items?.single()?.mealItem?.name)
+        assertEquals(1, completedMeal.nutrients?.size)
+        assertEquals("Protein", completedMeal.nutrients?.single()?.name)
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
     fun `failed analysis is explained and retry succeeds without duplicate meal`() = runTest {
         server.enqueue(MockResponse().setResponseCode(500).setBody("Internal Server Error"))
 
