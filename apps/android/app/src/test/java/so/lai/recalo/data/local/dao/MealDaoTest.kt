@@ -649,4 +649,68 @@ class MealDaoTest {
         assertEquals(350, nutrition?.calories)
         assertEquals(0.9, nutrition?.confidence!!, 0.01)
     }
+
+    @Test
+    fun `beginAnalysisRetry only claims an error meal once`() = runTest {
+        val meal = MealLogEntity(
+            id = "retry-meal",
+            imageUrl = null,
+            capturedAt = 1000L,
+            imagePath = "/path/to/meal.jpg",
+            analysisStatus = MealLogEntity.AnalysisStatus.ERROR,
+            analysisError = "SERVICE_UNAVAILABLE"
+        )
+        dao.insertMeal(meal)
+
+        assertEquals(1, dao.beginAnalysisRetry(meal.id))
+        assertEquals(0, dao.beginAnalysisRetry(meal.id))
+
+        val claimedMeal = dao.getMealById(meal.id)
+        assertEquals(MealLogEntity.AnalysisStatus.ANALYZING, claimedMeal?.analysisStatus)
+        assertNull(claimedMeal?.analysisError)
+    }
+
+    @Test
+    fun `replaceAnalysisResult removes stale result and completes meal atomically`() = runTest {
+        val failedMeal = MealLogEntity(
+            id = "partially-saved-meal",
+            imageUrl = null,
+            capturedAt = 1000L,
+            imagePath = "/path/to/meal.jpg",
+            analysisStatus = MealLogEntity.AnalysisStatus.ERROR,
+            analysisError = "UNKNOWN"
+        )
+        dao.insertMeal(failedMeal)
+        dao.insertNutritionResult(
+            NutritionResultEntity(
+                id = "stale-result",
+                mealLogId = failedMeal.id,
+                calories = 100,
+                confidence = 0.1
+            )
+        )
+
+        val completedMeal = failedMeal.copy(
+            analysisStatus = MealLogEntity.AnalysisStatus.COMPLETED,
+            analysisError = null,
+            analysisCompletedAt = 2000L
+        )
+        dao.replaceAnalysisResult(
+            meal = completedMeal,
+            result = NutritionResultEntity(
+                id = "fresh-result",
+                mealLogId = failedMeal.id,
+                calories = 450,
+                confidence = 0.9
+            ),
+            items = emptyList(),
+            nutrients = emptyList()
+        )
+
+        val result = dao.getMealWithNutritionById(failedMeal.id)
+        assertEquals(MealLogEntity.AnalysisStatus.COMPLETED, result?.meal?.analysisStatus)
+        assertNull(result?.meal?.analysisError)
+        assertEquals("fresh-result", result?.nutritionResult?.id)
+        assertEquals(450, result?.nutritionResult?.calories)
+    }
 }

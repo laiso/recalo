@@ -21,7 +21,7 @@ class OpenAiService(
     private val apiKey: String,
     private val timeoutSeconds: Long = 60,
     private val baseUrl: String = OPENAI_API_URL
-) {
+) : NutritionAnalyzer {
     private val trimmedApiKey = apiKey.trim()
     private val client = OkHttpClient.Builder()
         .connectTimeout(timeoutSeconds, TimeUnit.SECONDS)
@@ -52,10 +52,10 @@ class OpenAiService(
 
     private val userPrompt = "Estimate nutrition for this meal image."
 
-    suspend fun analyzeNutrition(
+    override suspend fun analyzeNutrition(
         imagePath: String,
-        modelName: String = "gpt-5.4-nano",
-        language: String = "English"
+        modelName: String,
+        language: String
     ): Result<NutritionResultData> = withContext(Dispatchers.IO) {
         try {
             val base64Image = encodeImageToBase64(imagePath)
@@ -98,7 +98,7 @@ class OpenAiService(
                             )
                         }
                     }
-                    else -> return@withContext Result.failure(Exception("OpenAI API error: ${response.code}"))
+                    else -> return@withContext Result.failure(OpenAiHttpException(response.code))
                 }
             }
 
@@ -172,6 +172,10 @@ class OpenAiService(
             .build()
     }
 }
+
+class OpenAiHttpException(
+    val statusCode: Int
+) : Exception("OpenAI API error: $statusCode")
 
 class ModelAccessDeniedException(
     val requestedModel: String,
