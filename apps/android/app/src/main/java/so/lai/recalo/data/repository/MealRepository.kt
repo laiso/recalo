@@ -17,14 +17,23 @@ import so.lai.recalo.data.local.entity.NutrientEntity
 import so.lai.recalo.data.local.entity.NutritionResultEntity
 import so.lai.recalo.data.local.model.MealWithNutrition
 import so.lai.recalo.data.openai.NutritionAnalyzerFactory
+import so.lai.recalo.data.openai.NutritionResultData
 import so.lai.recalo.data.openai.OpenAiService
+import so.lai.recalo.data.report.AnalysisDiagnosticSession
+import so.lai.recalo.data.report.AnalysisDiagnosticsStore
+import so.lai.recalo.data.report.AnalysisReportability
+import so.lai.recalo.data.report.DiagnosticReportJson
+import so.lai.recalo.data.report.DiagnosticValueSnapshot
+import so.lai.recalo.data.report.SecretRedactor
+import so.lai.recalo.data.report.analysisReportability
 
 class MealRepository(
     private val dao: MealDao,
     private val database: CaroliDatabase? = null,
     private val analyzerFactory: NutritionAnalyzerFactory = NutritionAnalyzerFactory { apiKey ->
         OpenAiService(apiKey = apiKey)
-    }
+    },
+    private val diagnosticStore: AnalysisDiagnosticsStore? = null
 ) {
     companion object {
         private const val TAG = "MealRepository"
@@ -79,7 +88,7 @@ class MealRepository(
             dao.insertMeal(mealEntity)
             Log.d(TAG, "Meal entity inserted with ID: $mealId")
 
-            analyzeMeal(mealEntity, openAiApiKey, modelName)
+            analyzeMeal(mealEntity, openAiApiKey, modelName, context)
         } catch (e: Exception) {
             Log.e(TAG, "Upload and analyze failed", e)
             Result.failure(e)
@@ -115,106 +124,71 @@ class MealRepository(
             analysisCompletedAt = null,
             needsModelUpdateNotice = false
         )
-        return analyzeMeal(analyzingMeal, openAiApiKey, modelName)
+        return analyzeMeal(analyzingMeal, openAiApiKey, modelName, null)
     }
 
     private suspend fun analyzeMeal(
         mealEntity: MealLogEntity,
         openAiApiKey: String,
-        modelName: String
+        modelName: String,
+        context: Context?
     ): Result<MealLogEntity> {
+        val store = diagnosticStore ?: context?.let { AnalysisDiagnosticsStore(it) }
+        val currentLanguage = java.util.Locale.getDefault().displayLanguage
+        val session = createDiagnosticSession(
+            store = store,
+            mealEntity = mealEntity,
+            modelName = modelName,
+            language = currentLanguage,
+            openAiApiKey = openAiApiKey
+        )
+        session?.valuesAfterLoad = captureDiagnosticValues(
+            mealId = mealEntity.id,
+            stage = DiagnosticValueSnapshot.STAGE_AFTER_LOAD
+        )
+
         return try {
             val analyzer = analyzerFactory.create(openAiApiKey)
-            val currentLanguage = java.util.Locale.getDefault().displayLanguage
             val analysisResult = analyzer.analyzeNutrition(
                 imagePath = requireNotNull(mealEntity.imagePath),
                 modelName = modelName,
-                language = currentLanguage
+                language = currentLanguage,
+                diagnostics = session
             )
 
-            if (analysisResult.isSuccess) {
-                val nutritionData = analysisResult.getOrNull()
-                    ?: return Result.failure(Exception("Analysis succeeded but returned null data"))
-                val resultId = UUID.randomUUID().toString()
-                val nutritionEntity = NutritionResultEntity(
-                    id = resultId,
-                    mealLogId = mealEntity.id,
-                    title = nutritionData.title ?: "Untitled Meal",
-                    calories = nutritionData.calories.toInt(),
-                    confidence = nutritionData.confidence
-                )
-
-                val allNutrients = mutableListOf<NutrientEntity>()
-                val mealItems = mutableListOf<MealItemEntity>()
-
-                nutritionData.nutrients.forEach { n ->
-                    allNutrients.add(
-                        NutrientEntity(
-                            id = UUID.randomUUID().toString(),
-                            nutritionResultId = resultId,
-                            mealItemId = null,
-                            name = n.name,
-                            amount = n.amount,
-                            unit = n.unit
-                        )
-                    )
-                }
-
-                nutritionData.items.forEach { item ->
-                    val mealItemId = UUID.randomUUID().toString()
-                    val mealItemEntity = MealItemEntity(
-                        id = mealItemId,
-                        nutritionResultId = resultId,
-                        name = item.name,
-                        quantity = item.quantity,
-                        calories = item.calories.toInt()
-                    )
-                    mealItems.add(mealItemEntity)
-
-                    item.nutrients.forEach { n ->
-                        allNutrients.add(
-                            NutrientEntity(
-                                id = UUID.randomUUID().toString(),
-                                nutritionResultId = null,
-                                mealItemId = mealItemId,
-                                name = n.name,
-                                amount = n.amount,
-                                unit = n.unit
-                            )
-                        )
-                    }
-                }
-
-                val updatedMeal = mealEntity.copy(
-                    analysisStatus = MealLogEntity.AnalysisStatus.COMPLETED,
-                    analysisError = null,
-                    analysisCompletedAt = System.currentTimeMillis(),
-                    needsModelUpdateNotice = nutritionData.needsModelUpdateNotice
-                )
-                dao.replaceAnalysisResult(
-                    meal = updatedMeal,
-                    result = nutritionEntity,
-                    items = mealItems,
-                    nutrients = allNutrients
-                )
-                Log.d(TAG, "Meal status updated to completed: ${mealEntity.id}")
-
-                Result.success(updatedMeal)
+            val nutritionData = analysisResult.getOrNull()
+            val result = if (analysisResult.isSuccess && nutritionData != null) {
+                saveSuccessfulAnalysis(mealEntity, nutritionData)
             } else {
                 val error = analysisResult.exceptionOrNull()
-                Log.e(TAG, "Analysis failed: ${error?.message}")
-
+                    ?: Exception("Analysis succeeded but returned null data")
+                session?.onAnalysisException(error)
+                Log.e(
+                    TAG,
+                    "Analysis failed diagnostic=${session?.diagnosticId}: " +
+                        SecretRedactor.redact(error.message, openAiApiKey)
+                )
                 val updatedMeal = mealEntity.copy(
                     analysisStatus = MealLogEntity.AnalysisStatus.ERROR,
-                    analysisError = error?.let(AnalysisErrorCode::fromThrowable)?.name
-                        ?: AnalysisErrorCode.UNKNOWN.name
+                    analysisError = AnalysisErrorCode.fromThrowable(error).name
                 )
                 dao.updateMeal(updatedMeal)
-
-                Result.failure(error ?: Exception("Analysis failed"))
+                Result.failure(error)
             }
+
+            session?.valuesAfterSave = captureDiagnosticValues(
+                mealId = mealEntity.id,
+                stage = DiagnosticValueSnapshot.STAGE_AFTER_SAVE
+            )
+            persistDiagnosticSession(store, session, mealEntity)
+            result
         } catch (e: Exception) {
-            Log.e(TAG, "Analysis failed with exception", e)
+            session?.onAnalysisException(e)
+            Log.e(
+                TAG,
+                "Analysis failed with exception diagnostic=${session?.diagnosticId}: " +
+                    SecretRedactor.redact(e.message, openAiApiKey)
+            )
             val updatedMeal = mealEntity.copy(
                 analysisStatus = MealLogEntity.AnalysisStatus.ERROR,
                 analysisError = AnalysisErrorCode.fromThrowable(e).name
@@ -224,7 +198,169 @@ class MealRepository(
             } catch (databaseError: Exception) {
                 Log.e(TAG, "Failed to persist analysis error", databaseError)
             }
+            session?.valuesAfterSave = captureDiagnosticValues(
+                mealId = mealEntity.id,
+                stage = DiagnosticValueSnapshot.STAGE_AFTER_SAVE
+            )
+            persistDiagnosticSession(store, session, mealEntity)
             Result.failure(e)
+        }
+    }
+
+    private suspend fun saveSuccessfulAnalysis(
+        mealEntity: MealLogEntity,
+        nutritionData: NutritionResultData
+    ): Result<MealLogEntity> {
+        val resultId = UUID.randomUUID().toString()
+        val nutritionEntity = NutritionResultEntity(
+            id = resultId,
+            mealLogId = mealEntity.id,
+            title = nutritionData.title ?: "Untitled Meal",
+            calories = nutritionData.calories.toInt(),
+            confidence = nutritionData.confidence
+        )
+
+        val allNutrients = mutableListOf<NutrientEntity>()
+        val mealItems = mutableListOf<MealItemEntity>()
+
+        nutritionData.nutrients.forEach { n ->
+            allNutrients.add(
+                NutrientEntity(
+                    id = UUID.randomUUID().toString(),
+                    nutritionResultId = resultId,
+                    mealItemId = null,
+                    name = n.name,
+                    amount = n.amount,
+                    unit = n.unit
+                )
+            )
+        }
+
+        nutritionData.items.forEach { item ->
+            val mealItemId = UUID.randomUUID().toString()
+            val mealItemEntity = MealItemEntity(
+                id = mealItemId,
+                nutritionResultId = resultId,
+                name = item.name,
+                quantity = item.quantity,
+                calories = item.calories.toInt()
+            )
+            mealItems.add(mealItemEntity)
+
+            item.nutrients.forEach { n ->
+                allNutrients.add(
+                    NutrientEntity(
+                        id = UUID.randomUUID().toString(),
+                        nutritionResultId = null,
+                        mealItemId = mealItemId,
+                        name = n.name,
+                        amount = n.amount,
+                        unit = n.unit
+                    )
+                )
+            }
+        }
+
+        val updatedMeal = mealEntity.copy(
+            analysisStatus = MealLogEntity.AnalysisStatus.COMPLETED,
+            analysisError = null,
+            analysisCompletedAt = System.currentTimeMillis(),
+            needsModelUpdateNotice = nutritionData.needsModelUpdateNotice
+        )
+        dao.replaceAnalysisResult(
+            meal = updatedMeal,
+            result = nutritionEntity,
+            items = mealItems,
+            nutrients = allNutrients
+        )
+        Log.d(TAG, "Meal status updated to completed: ${mealEntity.id}")
+        return Result.success(updatedMeal)
+    }
+
+    private fun createDiagnosticSession(
+        store: AnalysisDiagnosticsStore?,
+        mealEntity: MealLogEntity,
+        modelName: String,
+        language: String,
+        openAiApiKey: String
+    ): AnalysisDiagnosticSession? {
+        if (store == null) return null
+        return try {
+            val environment = store.environment()
+            AnalysisDiagnosticSession(
+                diagnosticId = UUID.randomUUID().toString(),
+                mealId = mealEntity.id,
+                attempt = store.countByMealId(mealEntity.id) + 1,
+                startedAt = System.currentTimeMillis(),
+                requestedModel = modelName,
+                language = language,
+                appPackageName = environment.packageName,
+                appVersionName = environment.versionName,
+                appVersionCode = environment.versionCode,
+                androidRelease = environment.androidRelease,
+                androidSdkInt = environment.androidSdkInt,
+                secrets = listOf(openAiApiKey)
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to start diagnostic session: ${e.message}")
+            null
+        }
+    }
+
+    private suspend fun captureDiagnosticValues(
+        mealId: String,
+        stage: String
+    ): DiagnosticValueSnapshot {
+        val capturedAt = System.currentTimeMillis()
+        return try {
+            DiagnosticValueSnapshot.from(
+                stage = stage,
+                capturedAt = capturedAt,
+                meal = dao.getMealWithNutritionById(mealId)
+            )
+        } catch (e: Exception) {
+            DiagnosticValueSnapshot.from(
+                stage = stage,
+                capturedAt = capturedAt,
+                meal = null,
+                missingReason = "values_read_failed"
+            )
+        }
+    }
+
+    private suspend fun persistDiagnosticSession(
+        store: AnalysisDiagnosticsStore?,
+        session: AnalysisDiagnosticSession?,
+        mealEntity: MealLogEntity
+    ) {
+        if (store == null || session == null) return
+        try {
+            val meal = dao.getMealWithNutritionById(mealEntity.id)
+                ?: return
+            session.analysisStatus = meal.meal.analysisStatus
+            session.errorCode = meal.meal.analysisError
+            session.completedAt = System.currentTimeMillis()
+
+            val reportability = meal.analysisReportability()
+            if (reportability !is AnalysisReportability.Reportable) {
+                return
+            }
+
+            val imageSource = mealEntity.imagePath
+                ?.takeIf { it.isNotBlank() }
+                ?.let { File(it) }
+                ?.takeIf { it.isFile }
+            val content = DiagnosticReportJson.fromSession(
+                session = session,
+                reportableReason = reportability.reason,
+                imageSource = imageSource,
+                atReport = null
+            )
+            if (store.save(content) == null) {
+                Log.w(TAG, "Diagnostic record was not stored for ${session.diagnosticId}")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Diagnostic recording failed: ${e.message}")
         }
     }
 
@@ -303,6 +439,11 @@ class MealRepository(
     suspend fun deleteMeal(mealId: String) {
         val meal = dao.getMealById(mealId)
         dao.deleteMealById(mealId)
+        try {
+            diagnosticStore?.deleteByMealId(mealId)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to delete diagnostic records: ${e.message}")
+        }
         meal?.imagePath?.takeIf { it.isNotBlank() }?.also { path ->
             try {
                 if (dao.countMealsByImagePath(path) > 0) {
@@ -335,7 +476,10 @@ class MealRepository(
     }
 
     suspend fun updatePortionRatio(nutritionResultId: String, newRatio: Double) {
-        Log.d(TAG, "updatePortionRatio called: nutritionResultId=$nutritionResultId, ratio=$newRatio")
+        Log.d(
+            TAG,
+            "updatePortionRatio called: nutritionResultId=$nutritionResultId, ratio=$newRatio"
+        )
 
         val db = database
         if (db != null) {

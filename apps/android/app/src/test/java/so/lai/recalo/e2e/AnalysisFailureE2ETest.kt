@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
+import com.google.gson.Gson
 import java.io.File
 import java.io.FileOutputStream
 import kotlinx.coroutines.flow.first
@@ -24,6 +25,7 @@ import so.lai.recalo.data.local.CaroliDatabase
 import so.lai.recalo.data.local.entity.MealLogEntity
 import so.lai.recalo.data.openai.NutritionAnalyzerFactory
 import so.lai.recalo.data.openai.OpenAiService
+import so.lai.recalo.data.report.analysisReportability
 import so.lai.recalo.data.repository.AnalysisErrorCode
 import so.lai.recalo.data.repository.MealRepository
 import so.lai.recalo.ui.screens.analysisErrorPresentation
@@ -64,6 +66,54 @@ class AnalysisFailureE2ETest {
         server.shutdown()
         sourceImage.delete()
         File(context.filesDir, "images").deleteRecursively()
+    }
+
+    @Test
+    fun `all-zero analysis is persisted as completed and cannot use failure retry`() = runTest {
+        // Characterization of the reported failure mode, using a controlled API
+        // response. It does not assert that a live model returns this for a photo.
+        val nutrition = """
+            {"title":"Meal","calories":0,"confidence":0,
+             "nutrients":[{"name":"Protein","amount":0,"unit":"g"},
+                          {"name":"Fat","amount":0,"unit":"g"},
+                          {"name":"Carbohydrates","amount":0,"unit":"g"},
+                          {"name":"Fiber","amount":0,"unit":"g"}],
+             "items":[]}
+        """.trimIndent()
+        val body = Gson().toJson(
+            mapOf(
+                "output" to listOf(
+                    mapOf(
+                        "type" to "message",
+                        "content" to listOf(mapOf("type" to "output_text", "text" to nutrition))
+                    )
+                )
+            )
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody(body))
+
+        val result = repository.uploadAndAnalyzeMeal(
+            context = context,
+            imageUri = Uri.fromFile(sourceImage),
+            openAiApiKey = "fake-key",
+            modelName = "test-model"
+        )
+        val mealId = result.getOrThrow().id
+        val saved = requireNotNull(repository.getMealWithNutritionById(mealId))
+        assertEquals(MealLogEntity.AnalysisStatus.COMPLETED, saved.meal.analysisStatus)
+        assertNull(saved.meal.analysisError)
+        assertEquals(0, saved.nutritionResult?.calories)
+        assertEquals(4, saved.nutrients?.size)
+        assertTrue(requireNotNull(saved.nutrients).all { it.amount == 0.0 })
+        // All-zero completions offer the diagnostic report button even though
+        // the meal is not turned into an analysis error.
+        assertTrue(saved.analysisReportability().isReportable)
+
+        val retry = repository.retryAnalysis(mealId, "fake-key", "test-model")
+        assertTrue(retry.isFailure)
+        assertEquals("Meal analysis is not retryable", retry.exceptionOrNull()?.message)
+        assertEquals(1, server.requestCount)
+        assertEquals(1, repository.getAllMealsWithNutrition().first().size)
     }
 
     @Test
@@ -111,6 +161,7 @@ class AnalysisFailureE2ETest {
         assertEquals(MealLogEntity.AnalysisStatus.ERROR, failedMeal.meal.analysisStatus)
         assertEquals(AnalysisErrorCode.SERVICE_UNAVAILABLE.name, failedMeal.meal.analysisError)
         assertNull(failedMeal.nutritionResult)
+        assertTrue(failedMeal.analysisReportability().isReportable)
 
         val errorPresentation = failedMeal.analysisErrorPresentation()
         assertNotNull(errorPresentation)

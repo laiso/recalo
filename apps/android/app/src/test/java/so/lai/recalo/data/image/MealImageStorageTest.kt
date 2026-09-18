@@ -17,8 +17,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.Shadows
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows
 
 @RunWith(RobolectricTestRunner::class)
 class MealImageStorageTest {
@@ -52,10 +52,15 @@ class MealImageStorageTest {
 
         val savedBitmap = BitmapFactory.decodeFile(savedFile.absolutePath)
 
-        assertEquals(File(context.filesDir, "images").absolutePath, savedFile.parentFile?.absolutePath)
+        assertEquals(
+            File(context.filesDir, "images").absolutePath,
+            savedFile.parentFile?.absolutePath
+        )
         assertEquals("meal_12345.jpg", savedFile.name)
         assertNotEquals(sourceFile.absolutePath, savedFile.absolutePath)
-        assertTrue(maxOf(savedBitmap.width, savedBitmap.height) <= MealImageStorage.DEFAULT_MAX_EDGE_PX)
+        assertTrue(
+            maxOf(savedBitmap.width, savedBitmap.height) <= MealImageStorage.DEFAULT_MAX_EDGE_PX
+        )
         assertEquals(Bitmap.CompressFormat.JPEG, savedFile.readCompressionFormat())
 
         savedBitmap.recycle()
@@ -85,7 +90,9 @@ class MealImageStorageTest {
         val savedBitmap = BitmapFactory.decodeFile(savedFile.absolutePath)
 
         assertEquals("meal_23456.jpg", savedFile.name)
-        assertTrue(maxOf(savedBitmap.width, savedBitmap.height) <= MealImageStorage.DEFAULT_MAX_EDGE_PX)
+        assertTrue(
+            maxOf(savedBitmap.width, savedBitmap.height) <= MealImageStorage.DEFAULT_MAX_EDGE_PX
+        )
         assertEquals(Bitmap.CompressFormat.JPEG, savedFile.readCompressionFormat())
 
         savedBitmap.recycle()
@@ -108,6 +115,30 @@ class MealImageStorageTest {
         }
 
         assertTrue(!File(context.filesDir, "images/meal_67890.jpg").exists())
+    }
+
+    // Characterizes the current power-of-two downsampling before exact scaling.
+    // This alone does not establish that resolution causes all-zero analysis.
+    @Test
+    fun `4032 pixel photo is downsampled below configured 1280 pixel edge`() {
+        val bitmap = Bitmap.createBitmap(4032, 3024, Bitmap.Config.ARGB_8888)
+        FileOutputStream(sourceFile).use { output ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+        }
+        bitmap.recycle()
+
+        val savedFile = MealImageStorage.saveCompressedJpeg(
+            context = context,
+            uri = Uri.fromFile(sourceFile),
+            timestampMillis = 34567L
+        )
+        val savedBitmap = BitmapFactory.decodeFile(savedFile.absolutePath)
+        try {
+            assertEquals(1008, savedBitmap.width)
+            assertEquals(756, savedBitmap.height)
+        } finally {
+            savedBitmap.recycle()
+        }
     }
 
     private fun File.readCompressionFormat(): Bitmap.CompressFormat {

@@ -16,7 +16,9 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -24,14 +26,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
@@ -39,17 +40,18 @@ import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -63,7 +65,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.health.connect.client.PermissionController
@@ -73,8 +74,9 @@ import coil.compose.AsyncImage
 import java.io.File
 import java.time.LocalDate
 import java.time.ZoneId
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import so.lai.recalo.data.api.AiConfig
 import so.lai.recalo.data.api.SessionManager
@@ -83,6 +85,9 @@ import so.lai.recalo.data.local.entity.MealLogEntity
 import so.lai.recalo.data.local.entity.NutritionResultEntity
 import so.lai.recalo.data.local.model.MealItemWithNutrients
 import so.lai.recalo.data.local.model.MealWithNutrition
+import so.lai.recalo.data.report.AnalysisDiagnosticsStore
+import so.lai.recalo.data.report.AnalysisReportService
+import so.lai.recalo.data.report.analysisReportability
 import so.lai.recalo.data.repository.AnalysisErrorCode
 import so.lai.recalo.data.repository.MealRepository
 import so.lai.recalo.health.HealthConnectManager
@@ -131,8 +136,12 @@ class HomeViewModel(
     var hasHealthConnectPermissions by mutableStateOf<Boolean?>(null)
         private set
     var showModelUpdateNotice by mutableStateOf<Boolean>(false)
+    var reportPreparationMealId by mutableStateOf<String?>(null)
+    var reportErrorMessage by mutableStateOf<String?>(null)
+    var reportErrorMealId by mutableStateOf<String?>(null)
     private val logTag = "HomeViewModel"
     private lateinit var mealRepository: MealRepository
+    private lateinit var reportService: AnalysisReportService
     private var _healthConnectManager: HealthConnectManager? = null
     private var previousMealSearchSequence = 0
 
@@ -145,7 +154,14 @@ class HomeViewModel(
     fun initRepository(context: android.content.Context) {
         if (!this::mealRepository.isInitialized) {
             val database = CaroliDatabase.getDatabase(context)
-            mealRepository = MealRepository(dao = database.mealDao(), database = database)
+            val diagnosticsStore = AnalysisDiagnosticsStore(context)
+            viewModelScope.launch(Dispatchers.IO) { diagnosticsStore.prune() }
+            mealRepository = MealRepository(
+                dao = database.mealDao(),
+                database = database,
+                diagnosticStore = diagnosticsStore
+            )
+            reportService = AnalysisReportService(context, store = diagnosticsStore)
             observeMeals()
         }
     }
@@ -209,7 +225,7 @@ class HomeViewModel(
                         val mealWithNutrition = mealRepository.getMealWithNutritionById(meal.id)
                         currentAnalysisResult = mealWithNutrition
                         currentScreenState = ScreenState.RESULT
-                        
+
                         if (meal.needsModelUpdateNotice) {
                             showModelUpdateNotice = true
                         }
@@ -306,6 +322,38 @@ class HomeViewModel(
                 isUploading = false
             }
         }
+    }
+
+    fun reportAnalysisIssue(meal: MealWithNutrition) {
+        if (!this::reportService.isInitialized || !this::mealRepository.isInitialized) return
+        val mealId = meal.meal.id
+        if (reportPreparationMealId == mealId) return
+
+        viewModelScope.launch {
+            reportPreparationMealId = mealId
+            reportErrorMessage = null
+            reportErrorMealId = null
+            try {
+                val freshMeal = mealRepository.getMealWithNutritionById(mealId) ?: meal
+                val result = reportService.prepareAndShare(freshMeal)
+                if (result.isFailure) {
+                    reportErrorMealId = mealId
+                    reportErrorMessage = result.exceptionOrNull()?.message
+                        ?: AnalysisReportService.BUILD_FAILED_MESSAGE
+                }
+            } catch (e: Exception) {
+                Log.e(logTag, "Failed to prepare the diagnostic report", e)
+                reportErrorMealId = mealId
+                reportErrorMessage = e.message ?: AnalysisReportService.BUILD_FAILED_MESSAGE
+            } finally {
+                reportPreparationMealId = null
+            }
+        }
+    }
+
+    fun clearReportError() {
+        reportErrorMessage = null
+        reportErrorMealId = null
     }
 
     fun resetToIdle() {
@@ -556,7 +604,9 @@ fun HomeScreen(
     var selectedDateOffset by remember { mutableIntStateOf(0) }
 
     val baseToday = remember {
-        java.time.ZonedDateTime.now().minusHours(so.lai.recalo.data.api.SessionManager.DEFAULT_DAY_START_HOUR.toLong()).toLocalDate()
+        java.time.ZonedDateTime.now().minusHours(
+            so.lai.recalo.data.api.SessionManager.DEFAULT_DAY_START_HOUR.toLong()
+        ).toLocalDate()
     }
     val targetDate = baseToday.plusDays(selectedDateOffset.toLong())
     val targetCapturedAt = remember(targetDate) {
@@ -600,7 +650,10 @@ fun HomeScreen(
 
     val targetMealsAndSummary by remember(viewModel.meals, targetDate) {
         derivedStateOf {
-            val startOfTargetDate = targetDate.atTime(so.lai.recalo.data.api.SessionManager.DEFAULT_DAY_START_HOUR, 0).atZone(
+            val startOfTargetDate = targetDate.atTime(
+                so.lai.recalo.data.api.SessionManager.DEFAULT_DAY_START_HOUR,
+                0
+            ).atZone(
                 ZoneId.systemDefault()
             ).toInstant().toEpochMilli()
             val endOfTargetDate = startOfTargetDate + 24 * 60 * 60 * 1000L
@@ -704,7 +757,9 @@ fun HomeScreen(
                     AnimatedContent(
                         targetState = viewModel.currentScreenState,
                         transitionSpec = {
-                            fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
+                            fadeIn(animationSpec = tween(300)) togetherWith fadeOut(
+                                animationSpec = tween(300)
+                            )
                         },
                         label = "ScreenState"
                     ) { state ->
@@ -721,6 +776,10 @@ fun HomeScreen(
                                     viewModel.currentScreenState = ScreenState.DETAIL
                                 },
                                 onRetryClick = { mealId -> viewModel.retryAnalysis(mealId) },
+                                onReportClick = { meal -> viewModel.reportAnalysisIssue(meal) },
+                                reportPreparationMealId = viewModel.reportPreparationMealId,
+                                reportErrorMessage = viewModel.reportErrorMessage,
+                                reportErrorMealId = viewModel.reportErrorMealId,
                                 onLogoutClick = { showSettingsDialog = true },
                                 isLoading = viewModel.isLoading
                             )
@@ -767,6 +826,10 @@ fun HomeScreen(
                                         showEditDialog = itemId
                                     }
                                 },
+                                onReportClick = { meal -> viewModel.reportAnalysisIssue(meal) },
+                                reportPreparationMealId = viewModel.reportPreparationMealId,
+                                reportErrorMessage = viewModel.reportErrorMessage,
+                                reportErrorMealId = viewModel.reportErrorMealId,
                                 onSaveClick = {
                                     viewModel.currentAnalysisResult?.let { result ->
                                         val nutrition = result.nutritionResult
@@ -1204,6 +1267,10 @@ private fun IdleScreen(
     onNextDayClick: () -> Unit,
     onMealClick: (MealWithNutrition) -> Unit,
     onRetryClick: (String) -> Unit,
+    onReportClick: (MealWithNutrition) -> Unit,
+    reportPreparationMealId: String?,
+    reportErrorMessage: String?,
+    reportErrorMealId: String?,
     onLogoutClick: () -> Unit,
     isLoading: Boolean
 ) {
@@ -1257,7 +1324,9 @@ private fun IdleScreen(
                         .size(32.dp)
                 ) {
                     Icon(
-                        Icons.Default.Settings, contentDescription = "Settings", tint = Color.White.copy(alpha = 0.7f),
+                        Icons.Default.Settings,
+                        contentDescription = "Settings",
+                        tint = Color.White.copy(alpha = 0.7f),
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -1281,7 +1350,9 @@ private fun IdleScreen(
                             modifier = Modifier.size(32.dp)
                         ) {
                             Icon(
-                                Icons.Default.KeyboardArrowLeft, contentDescription = "Previous", tint = Color.White.copy(alpha = 0.8f)
+                                Icons.Default.KeyboardArrowLeft,
+                                contentDescription = "Previous",
+                                tint = Color.White.copy(alpha = 0.8f)
                             )
                         }
 
@@ -1299,11 +1370,13 @@ private fun IdleScreen(
                         }
 
                         IconButton(
-                            onClick = onNextDayClick, enabled = !isToday,
+                            onClick = onNextDayClick,
+                            enabled = !isToday,
                             modifier = Modifier.size(32.dp)
                         ) {
                             Icon(
-                                Icons.Default.KeyboardArrowRight, contentDescription = "Next",
+                                Icons.Default.KeyboardArrowRight,
+                                contentDescription = "Next",
                                 tint = if (isToday) {
                                     Color.White.copy(alpha = 0.3f)
                                 } else {
@@ -1447,7 +1520,11 @@ private fun IdleScreen(
                     MealCard(
                         mealWithNutrition = mealWithNutrition,
                         onClick = { onMealClick(mealWithNutrition) },
-                        onRetry = { onRetryClick(mealWithNutrition.meal.id) }
+                        onRetry = { onRetryClick(mealWithNutrition.meal.id) },
+                        onReport = { onReportClick(mealWithNutrition) },
+                        isPreparingReport = reportPreparationMealId == mealWithNutrition.meal.id,
+                        reportErrorMessage = reportErrorMessage
+                            .takeIf { reportErrorMealId == mealWithNutrition.meal.id }
                     )
                 }
             }
@@ -1582,13 +1659,17 @@ private fun MealImageFullscreenDialog(
 private fun MealCard(
     mealWithNutrition: MealWithNutrition,
     onClick: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    onReport: () -> Unit = {},
+    isPreparingReport: Boolean = false,
+    reportErrorMessage: String? = null
 ) {
     var showFullscreenImage by remember { mutableStateOf(false) }
     val meal = mealWithNutrition.meal
     val nutrition = mealWithNutrition.nutritionResult
     val errorPresentation = mealWithNutrition.analysisErrorPresentation()
     val isAnalyzing = meal.analysisStatus == MealLogEntity.AnalysisStatus.ANALYZING
+    val isReportable = mealWithNutrition.analysisReportability().isReportable
 
     Card(
         modifier = Modifier
@@ -1640,10 +1721,7 @@ private fun MealCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    return@Column
-                }
-
-                if (errorPresentation != null) {
+                } else if (errorPresentation != null) {
                     Text(
                         text = errorPresentation.title,
                         style = MaterialTheme.typography.titleMedium,
@@ -1666,52 +1744,66 @@ private fun MealCard(
                             Text("Try again")
                         }
                     }
-                    return@Column
-                }
+                    if (isReportable) {
+                        AnalysisReportAction(
+                            isPreparingReport = isPreparingReport,
+                            reportErrorMessage = reportErrorMessage,
+                            onReport = onReport
+                        )
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = nutrition?.title ?: "Unknown Meal",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f)
+                        )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = nutrition?.title ?: "Unknown Meal",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    // Portion ratio label (simple gray text)
-                    nutrition?.let { result ->
-                        if (result.portionRatio != 1.0) {
-                            Text(
-                                text = "${result.portionRatio} x",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(start = 8.dp)
-                            )
+                        // Portion ratio label (simple gray text)
+                        nutrition?.let { result ->
+                            if (result.portionRatio != 1.0) {
+                                Text(
+                                    text = "${result.portionRatio} x",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 8.dp)
+                                )
+                            }
                         }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(2.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
 
-                Text(
-                    text = "${nutrition?.calories ?: 0} kcal",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = CalorieColor,
-                    fontWeight = FontWeight.Bold
-                )
+                    Text(
+                        text = "${nutrition?.calories ?: 0} kcal",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = CalorieColor,
+                        fontWeight = FontWeight.Bold
+                    )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                mealWithNutrition.nutrients?.let { nutrients ->
-                    val p = nutrients.find { it.name.contains("Protein", ignoreCase = true) }?.amount?.toInt() ?: 0
-                    val f = nutrients.find { it.name.contains("Fat", ignoreCase = true) }?.amount?.toInt() ?: 0
-                    val c = nutrients.find { it.name.contains("Carbohydrate", ignoreCase = true) }?.amount?.toInt() ?: 0
+                    mealWithNutrition.nutrients?.let { nutrients ->
+                        val p = nutrients.find { it.name.contains("Protein", ignoreCase = true) }?.amount?.toInt() ?: 0
+                        val f = nutrients.find { it.name.contains("Fat", ignoreCase = true) }?.amount?.toInt() ?: 0
+                        val c = nutrients.find { it.name.contains("Carbohydrate", ignoreCase = true) }?.amount?.toInt() ?: 0
 
-                    PFCBadges(protein = p, fat = f, carbs = c)
+                        PFCBadges(protein = p, fat = f, carbs = c)
+                    }
+
+                    if (isReportable) {
+                        AnalysisReportAction(
+                            isPreparingReport = isPreparingReport,
+                            reportErrorMessage = reportErrorMessage,
+                            onReport = onReport
+                        )
+                    }
                 }
             }
         }
@@ -1722,6 +1814,45 @@ private fun MealCard(
             imagePath = meal.imagePath,
             onDismiss = { showFullscreenImage = false }
         )
+    }
+}
+
+@Composable
+private fun AnalysisReportAction(
+    isPreparingReport: Boolean,
+    reportErrorMessage: String?,
+    onReport: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Spacer(modifier = Modifier.height(4.dp))
+        TextButton(
+            onClick = onReport,
+            enabled = !isPreparingReport,
+            modifier = Modifier.testTag("analysis_report_button")
+        ) {
+            Icon(
+                imageVector = Icons.Default.Email,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(if (isPreparingReport) "診断データを作成しています…" else "問題を報告")
+        }
+        Text(
+            text = "解析に使用した写真と診断データを添付します",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("analysis_report_notice")
+        )
+        if (reportErrorMessage != null) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = reportErrorMessage,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.testTag("analysis_report_error")
+            )
+        }
     }
 }
 
@@ -2143,6 +2274,10 @@ private fun ResultScreen(
     showModelUpdateNotice: Boolean = false,
     onDismissNotice: () -> Unit = {},
     onEditClick: ((String) -> Unit)? = null,
+    onReportClick: (MealWithNutrition) -> Unit = {},
+    reportPreparationMealId: String? = null,
+    reportErrorMessage: String? = null,
+    reportErrorMealId: String? = null,
     onSaveClick: () -> Unit,
     onCancelClick: () -> Unit
 ) {
@@ -2154,6 +2289,7 @@ private fun ResultScreen(
     val nutrition = mealWithNutrition.nutritionResult
     val items = mealWithNutrition.items
     val nutrients = mealWithNutrition.nutrients
+    val isReportable = mealWithNutrition.analysisReportability().isReportable
 
     if (showModelUpdateNotice) {
         Card(
@@ -2348,6 +2484,15 @@ private fun ResultScreen(
                             )
                         }
                     }
+                }
+
+                if (isReportable) {
+                    AnalysisReportAction(
+                        isPreparingReport = reportPreparationMealId == meal.id,
+                        reportErrorMessage = reportErrorMessage
+                            .takeIf { reportErrorMealId == meal.id },
+                        onReport = { onReportClick(mealWithNutrition) }
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))

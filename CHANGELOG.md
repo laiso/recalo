@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added a **問題を報告** action to meal cards whose analysis failed or completed with all-zero nutrition values.
+- Added a diagnostic ZIP (report, request, responses, values at each stage, and the exact sent image) that opens the mail app addressed to `support@lai.so`, so support can tell where a value became zero.
+- Added 7-day / 20-attempt retention for failed attempts in a non-backed-up device directory, plus cascade deletion with the meal.
+
+### Changed
+
+- Replaced full API-response logging with diagnostic-id and status logs, and redact credentials from responses, exceptions, and logs.
+
 ## v1.3.0 - Current stable
 
 Released: 2026-07-15
