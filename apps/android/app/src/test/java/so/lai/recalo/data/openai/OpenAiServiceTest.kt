@@ -79,4 +79,58 @@ class OpenAiServiceTest {
         assertTrue(result.isFailure)
         assertTrue(result.exceptionOrNull()?.message?.contains("500") == true)
     }
+
+    // Characterization tests for the all-zero report. These document current
+    // behavior, not the desired validation policy or a live-model reproduction.
+    @Test
+    fun `missing numeric fields are silently accepted as zero`() = runTest {
+        enqueueNutrition(
+            """
+            {"title":"Meal","nutrients":[{"name":"Protein","unit":"g"}],
+             "items":[{"name":"Rice","quantity":"1 bowl",
+                       "nutrients":[{"name":"Protein","unit":"g"}]}]}
+            """.trimIndent()
+        )
+
+        val data = service.analyzeNutrition(tempFile.absolutePath).getOrThrow()
+
+        assertEquals(0.0, data.calories, 0.0)
+        assertEquals(0.0, data.confidence, 0.0)
+        assertEquals(0.0, data.nutrients.single().amount, 0.0)
+        assertEquals(0.0, data.items.single().calories, 0.0)
+        assertEquals(0.0, data.items.single().nutrients.single().amount, 0.0)
+    }
+
+    @Test
+    fun `explicit all-zero response is accepted as success`() = runTest {
+        enqueueNutrition(
+            """
+            {"title":"Meal","calories":0,"confidence":0,
+             "nutrients":[{"name":"Protein","amount":0,"unit":"g"}],
+             "items":[{"name":"Rice","quantity":"1 bowl","calories":0,
+                       "nutrients":[{"name":"Protein","amount":0,"unit":"g"}]}]}
+            """.trimIndent()
+        )
+
+        val data = service.analyzeNutrition(tempFile.absolutePath).getOrThrow()
+
+        assertEquals(0.0, data.calories, 0.0)
+        assertEquals(0.0, data.confidence, 0.0)
+        assertTrue(data.nutrients.all { it.amount == 0.0 })
+        assertEquals(0.0, data.items.single().calories, 0.0)
+    }
+
+    private fun enqueueNutrition(content: String) {
+        val body = gson.toJson(
+            mapOf(
+                "output" to listOf(
+                    mapOf(
+                        "type" to "message",
+                        "content" to listOf(mapOf("type" to "output_text", "text" to content))
+                    )
+                )
+            )
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody(body))
+    }
 }
