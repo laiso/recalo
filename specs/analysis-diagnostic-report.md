@@ -66,12 +66,15 @@ retry starts a new id and never overwrites the previous failure.
 | `report.json` | Diagnostic id, timestamp, app and Android versions, requested/actual model, language, analysis status, HTTP status, request id, missing data reasons |
 | `request.json` | Prompt, schema, analysis settings, and the image SHA-256. Image bytes are not duplicated |
 | `response.json` | Raw API response body per attempt (primary, fallback, exception), redacted |
-| `values.json` | Database values after load, after save, and at report time, including the portion-ratio multiplier |
+| `values.json` | `afterLoad`: DB before analysis; `afterParse`: complete decoded API nutrition before conversion/persistence; `afterSave`: DB after saving; `atReport`: DB when reporting, including portion ratio |
 | `image.jpg` | Exactly the image sent for analysis, when it is still available |
 
 Records are stored under `context.noBackupFilesDir/analysis_diagnostics`, which
 is excluded from backup. Only failed/reportable attempts are kept. Retention is
-7 days and at most 20 attempts, oldest removed first. Deleting a meal deletes
+7 days and at most 20 attempts, oldest removed first. Cleanup runs on app
+repository initialization and before report lookup, as well as when saving a
+diagnostic, so a new failure is not required to expire old records. Reports for
+expired attempts use the current-values-only path. Deleting a meal deletes
 its records.
 
 ### Missing data
@@ -99,6 +102,10 @@ diagnostic id and status instead.
   `DiagnosticReportSharer` are separate classes. No database schema change.
 - Diagnostic read/write failures are swallowed so they can never change the
   analysis result.
+- API parsing captures a redacted immutable nutrition snapshot, including
+  item quantities and nutrient amounts, before integer conversion or DB writes.
+  Repository failures also record their redacted exception and stack, including
+  failures during persistence after a successful API response.
 
 ## Tests
 
@@ -112,6 +119,14 @@ diagnostic id and status instead.
   result, partial zero, retry isolation, delete cascade, no-HTTP failure, and
   key leakage into response/logs.
 - FileProvider URI and share-intent extras, plus a no-share-target error.
+- Repository save failure: full decoded nutrition (before integer conversion)
+  and the redacted database exception/stack are retained together.
+- Expiry lookup and report generation without any new failed analysis.
+- `DiagnosticReportUiTest` runs on Android: both failed and all-zero meal cards
+  open the real share sheet with a ZIP containing all diagnostic documents and
+  the original image bytes. Error/analysis card rendering uses explicit branches
+  rather than early returns from the composable content.
 
 The real-device mail app check (attachment readable, to/subject/body filled) is
-a manual verification step and is not covered by unit tests.
+a manual verification step and is not covered by the share-sheet test. No test
+sends an email or requires an OpenAI key.

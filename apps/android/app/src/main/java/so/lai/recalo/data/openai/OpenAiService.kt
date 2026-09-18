@@ -251,6 +251,7 @@ class OpenAiService(
             throw e
         }
 
+        recorder.onNutritionParsed(nutritionData)
         recorder.onContentParsed(
             DiagnosticParsedContent(
                 responseId = openAiResponse.id,

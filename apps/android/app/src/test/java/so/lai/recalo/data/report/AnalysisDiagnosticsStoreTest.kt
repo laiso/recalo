@@ -80,6 +80,16 @@ class AnalysisDiagnosticsStoreTest {
     }
 
     @Test
+    fun `lookup expires old records without a new failed analysis`() {
+        val store = store()
+        store.save(content("diag-old", "meal-old", now))
+        now += AnalysisDiagnosticsStore.DEFAULT_RETENTION_MILLIS + 1
+
+        assertNull(store.findDirByMealId("meal-old"))
+        assertEquals(0, store.count())
+    }
+
+    @Test
     fun `deleting a meal removes its diagnostic records only`() {
         val store = store()
         store.save(content(id = "diag-a", mealId = "meal-a", createdAt = now))

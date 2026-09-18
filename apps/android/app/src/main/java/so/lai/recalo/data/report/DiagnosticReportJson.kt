@@ -124,6 +124,7 @@ object DiagnosticReportJson {
             addProperty("mealId", meal.meal.id)
             addProperty("portionRatioAtReport", meal.nutritionResult?.portionRatio)
             add("afterLoad", unavailableStage("not_recorded"))
+            add("afterParse", unavailableStage("not_recorded"))
             add("afterSave", unavailableStage("not_recorded"))
             add("atReport", snapshotJson(atReport))
             add("notes", stringArray(LEGACY_VALUES_NOTE))
@@ -269,6 +270,15 @@ object DiagnosticReportJson {
             addProperty("mealId", session.mealId)
             addProperty("portionRatioAtReport", atReport?.portionRatio)
             add(
+                "afterParse",
+                session.parsedNutrition?.let { nutrition ->
+                    JsonObject().apply {
+                        addProperty("available", true)
+                        add("nutrition", nutrition.deepCopy())
+                    }
+                } ?: unavailableStage("not_captured")
+            )
+            add(
                 "afterLoad",
                 session.valuesAfterLoad?.let(::snapshotJson) ?: unavailableStage("not_captured")
             )
@@ -282,7 +292,8 @@ object DiagnosticReportJson {
             )
             addProperty(
                 "note",
-                "portionRatio is the meal-portion multiplier recorded with the stored values."
+                "afterLoad is the database state before analysis; afterParse is the decoded " +
+                    "API result before saving. portionRatio is the stored meal-portion multiplier."
             )
         }
         return gson.toJson(json)

@@ -1,7 +1,10 @@
 package so.lai.recalo.data.report
 
+import com.google.gson.GsonBuilder
+import com.google.gson.JsonElement
 import so.lai.recalo.data.local.entity.NutrientEntity
 import so.lai.recalo.data.local.model.MealWithNutrition
+import so.lai.recalo.data.openai.NutritionResultData
 
 /**
  * Optional diagnostic callback handed to the analysis service.
@@ -22,6 +25,8 @@ interface AnalysisDiagnosticsRecorder {
     fun onHttpResponse(info: DiagnosticHttpResponse)
 
     fun onContentParsed(info: DiagnosticParsedContent)
+
+    fun onNutritionParsed(nutrition: NutritionResultData) = Unit
 
     fun onAnalysisException(error: Throwable)
 
@@ -215,6 +220,8 @@ class AnalysisDiagnosticSession(
         private set
     var parsedContent: DiagnosticParsedContent? = null
         private set
+    var parsedNutrition: JsonElement? = null
+        private set
     var exceptionInfo: DiagnosticExceptionInfo? = null
         private set
     var valuesAfterLoad: DiagnosticValueSnapshot? = null
@@ -249,6 +256,16 @@ class AnalysisDiagnosticSession(
 
     override fun onContentParsed(info: DiagnosticParsedContent) {
         parsedContent = info
+    }
+
+    override fun onNutritionParsed(nutrition: NutritionResultData) {
+        // Capture an immutable, redacted snapshot before repository conversion or writes.
+        // Diagnostic serialization must not turn a successful analysis into a failure.
+        parsedNutrition = runCatching {
+            val gson = GsonBuilder().serializeNulls().create()
+            val json = gson.toJson(nutrition)
+            gson.fromJson(SecretRedactor.redact(json, secrets), JsonElement::class.java)
+        }.getOrNull()
     }
 
     override fun onAnalysisException(error: Throwable) {

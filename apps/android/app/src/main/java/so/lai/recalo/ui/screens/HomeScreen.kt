@@ -74,6 +74,7 @@ import coil.compose.AsyncImage
 import java.io.File
 import java.time.LocalDate
 import java.time.ZoneId
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -154,6 +155,7 @@ class HomeViewModel(
         if (!this::mealRepository.isInitialized) {
             val database = CaroliDatabase.getDatabase(context)
             val diagnosticsStore = AnalysisDiagnosticsStore(context)
+            viewModelScope.launch(Dispatchers.IO) { diagnosticsStore.prune() }
             mealRepository = MealRepository(
                 dao = database.mealDao(),
                 database = database,
@@ -1719,10 +1721,7 @@ private fun MealCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    return@Column
-                }
-
-                if (errorPresentation != null) {
+                } else if (errorPresentation != null) {
                     Text(
                         text = errorPresentation.title,
                         style = MaterialTheme.typography.titleMedium,
@@ -1752,60 +1751,59 @@ private fun MealCard(
                             onReport = onReport
                         )
                     }
-                    return@Column
-                }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = nutrition?.title ?: "Unknown Meal",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f)
+                        )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = nutrition?.title ?: "Unknown Meal",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    // Portion ratio label (simple gray text)
-                    nutrition?.let { result ->
-                        if (result.portionRatio != 1.0) {
-                            Text(
-                                text = "${result.portionRatio} x",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(start = 8.dp)
-                            )
+                        // Portion ratio label (simple gray text)
+                        nutrition?.let { result ->
+                            if (result.portionRatio != 1.0) {
+                                Text(
+                                    text = "${result.portionRatio} x",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 8.dp)
+                                )
+                            }
                         }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(2.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
 
-                Text(
-                    text = "${nutrition?.calories ?: 0} kcal",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = CalorieColor,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                mealWithNutrition.nutrients?.let { nutrients ->
-                    val p = nutrients.find { it.name.contains("Protein", ignoreCase = true) }?.amount?.toInt() ?: 0
-                    val f = nutrients.find { it.name.contains("Fat", ignoreCase = true) }?.amount?.toInt() ?: 0
-                    val c = nutrients.find { it.name.contains("Carbohydrate", ignoreCase = true) }?.amount?.toInt() ?: 0
-
-                    PFCBadges(protein = p, fat = f, carbs = c)
-                }
-
-                if (isReportable) {
-                    AnalysisReportAction(
-                        isPreparingReport = isPreparingReport,
-                        reportErrorMessage = reportErrorMessage,
-                        onReport = onReport
+                    Text(
+                        text = "${nutrition?.calories ?: 0} kcal",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = CalorieColor,
+                        fontWeight = FontWeight.Bold
                     )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    mealWithNutrition.nutrients?.let { nutrients ->
+                        val p = nutrients.find { it.name.contains("Protein", ignoreCase = true) }?.amount?.toInt() ?: 0
+                        val f = nutrients.find { it.name.contains("Fat", ignoreCase = true) }?.amount?.toInt() ?: 0
+                        val c = nutrients.find { it.name.contains("Carbohydrate", ignoreCase = true) }?.amount?.toInt() ?: 0
+
+                        PFCBadges(protein = p, fat = f, carbs = c)
+                    }
+
+                    if (isReportable) {
+                        AnalysisReportAction(
+                            isPreparingReport = isPreparingReport,
+                            reportErrorMessage = reportErrorMessage,
+                            onReport = onReport
+                        )
+                    }
                 }
             }
         }

@@ -162,6 +162,7 @@ class MealRepository(
             } else {
                 val error = analysisResult.exceptionOrNull()
                     ?: Exception("Analysis succeeded but returned null data")
+                session?.onAnalysisException(error)
                 Log.e(
                     TAG,
                     "Analysis failed diagnostic=${session?.diagnosticId}: " +
@@ -182,6 +183,7 @@ class MealRepository(
             persistDiagnosticSession(store, session, mealEntity)
             result
         } catch (e: Exception) {
+            session?.onAnalysisException(e)
             Log.e(
                 TAG,
                 "Analysis failed with exception diagnostic=${session?.diagnosticId}: " +

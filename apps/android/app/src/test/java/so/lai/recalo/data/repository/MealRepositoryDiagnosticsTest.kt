@@ -81,6 +81,69 @@ class MealRepositoryDiagnosticsTest {
     }
 
     @Test
+    fun `save failure retains decoded values and redacted repository exception`() = runTest {
+        database.openHelper.writableDatabase.execSQL(
+            "CREATE TRIGGER reject_nutrition BEFORE INSERT ON nutrition_results " +
+                "BEGIN SELECT RAISE(ABORT, 'forced save failure $apiKey'); END"
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                nutritionBody(successNutrition.replace("450", "450.75"))
+            )
+        )
+
+        val result = repository.uploadAndAnalyzeMeal(
+            context, Uri.fromFile(sourceImage), apiKey, "test-model"
+        )
+
+        assertTrue(result.isFailure)
+        val mealId = latestMealId()
+        val archive = zipBuilder().zipDirectory(
+            requireNotNull(store.findDirByMealId(mealId)), "save-failure"
+        ).getOrThrow()
+        val values = archive.readJsonEntry(DiagnosticReportFiles.VALUES_FILE)
+        val parsed = values.getAsJsonObject("afterParse").getAsJsonObject("nutrition")
+        assertEquals(450.75, parsed.get("calories").asDouble, 0.0)
+        assertEquals(0.9, parsed.get("confidence").asDouble, 0.0)
+        assertEquals(30.0, parsed.getAsJsonArray("nutrients")[0].asJsonObject.get("amount").asDouble, 0.0)
+        val item = parsed.getAsJsonArray("items")[0].asJsonObject
+        assertEquals("Salmon", item.get("name").asString)
+        assertEquals("1 fillet", item.get("quantity").asString)
+        assertEquals(450.75, item.get("calories").asDouble, 0.0)
+        assertEquals(30.0, item.getAsJsonArray("nutrients")[0].asJsonObject.get("amount").asDouble, 0.0)
+        val afterSave = values.getAsJsonObject("afterSave")
+        assertEquals("no_nutrition_result_stored", afterSave.get("missingReason").asString)
+        assertTrue(afterSave.get("calories")?.isJsonNull != false)
+        val exception = archive.readJsonEntry(DiagnosticReportFiles.RESPONSE_FILE)
+            .getAsJsonObject("exception")
+        assertTrue(exception.get("available").asBoolean)
+        assertTrue(exception.get("type").asString.contains("SQLiteConstraintException"))
+        assertTrue(exception.get("message").asString.contains("forced save failure"))
+        assertTrue(exception.getAsJsonArray("stack").size() > 0)
+        ZipFile(archive).use { zip ->
+            zip.entries().asSequence().filter { it.name.endsWith(".json") }.forEach { entry ->
+                assertFalse(zip.getInputStream(entry).bufferedReader().use { it.readText() }.contains(apiKey))
+            }
+        }
+    }
+
+    @Test
+    fun `fallback result retains the decoded nutrition snapshot`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(403).setBody("denied"))
+        server.enqueue(MockResponse().setResponseCode(200).setBody(nutritionBody(allZeroNutrition)))
+        val result = repository.uploadAndAnalyzeMeal(context, Uri.fromFile(sourceImage), apiKey, "test-model")
+        val mealId = result.getOrThrow().id
+        val archive = zipBuilder().zipDirectory(
+            requireNotNull(store.findDirByMealId(mealId)), "fallback-parsed"
+        ).getOrThrow()
+        val parsed = archive.readJsonEntry(DiagnosticReportFiles.VALUES_FILE)
+            .getAsJsonObject("afterParse").getAsJsonObject("nutrition")
+        assertEquals(0.0, parsed.get("calories").asDouble, 0.0)
+        assertEquals("Rice", parsed.getAsJsonArray("items")[0].asJsonObject.get("name").asString)
+        assertEquals(2, server.requestCount)
+    }
+
+    @Test
     fun `http error produces a reportable record with the http status`() = runTest {
         server.enqueue(MockResponse().setResponseCode(500).setBody("Internal Server Error"))
 

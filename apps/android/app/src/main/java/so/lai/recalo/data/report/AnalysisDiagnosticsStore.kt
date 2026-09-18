@@ -69,10 +69,12 @@ class AnalysisDiagnosticsStore(
         }
     }
 
-    fun findDirByMealId(mealId: String): File? =
-        recordDirectories()
+    fun findDirByMealId(mealId: String): File? {
+        prune()
+        return recordDirectories()
             .filter { metaFor(it)?.get("mealId")?.asString == mealId }
             .maxByOrNull { createdAtOf(it) }
+    }
 
     fun findDirByDiagnosticId(diagnosticId: String): File? =
         recordDirectories().firstOrNull { metaFor(it)?.get("diagnosticId")?.asString == diagnosticId }

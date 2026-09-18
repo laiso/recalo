@@ -61,6 +61,26 @@ class AnalysisReportServiceTest {
     }
 
     @Test
+    fun `report after retention expiry uses current values without the old response`() = runTest {
+        val saved = requireNotNull(store.save(storedContent("expired", "old-meal")))
+        File(saved, DiagnosticReportFiles.RESPONSE_FILE).writeText("{\"oldResponse\":true}")
+        now += AnalysisDiagnosticsStore.DEFAULT_RETENTION_MILLIS + 1
+
+        val archive = service.createReportZip(meal("old-meal", imageFile.absolutePath)).getOrThrow()
+
+        ZipFile(archive).use { zip ->
+            val report = zip.getInputStream(zip.getEntry(DiagnosticReportFiles.REPORT_FILE))
+                .bufferedReader().use { Gson().fromJson(it, JsonObject::class.java) }
+            assertTrue(report.get("legacy").asBoolean)
+            val response = zip.getInputStream(zip.getEntry(DiagnosticReportFiles.RESPONSE_FILE))
+                .bufferedReader().use { it.readText() }
+            assertFalse(response.contains("oldResponse"))
+        }
+        assertFalse(saved.exists())
+        assertEquals(0, store.count())
+    }
+
+    @Test
     fun `legacy meal without a stored attempt produces a self-contained archive`() = runTest {
         val meal = meal(mealId = "legacy-meal", imagePath = imageFile.absolutePath)
 
