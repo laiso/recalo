@@ -148,7 +148,7 @@ class AnalysisReportServiceTest {
         assertEquals(Intent.ACTION_SEND, intent.action)
         assertEquals("application/zip", intent.type)
         assertEquals("support@lai.so", intent.getStringArrayExtra(Intent.EXTRA_EMAIL)?.single())
-        assertEquals("Recalo 食事解析の問題報告", intent.getStringExtra(Intent.EXTRA_SUBJECT))
+        assertEquals("Recalo meal analysis problem report", intent.getStringExtra(Intent.EXTRA_SUBJECT))
         assertEquals("diagnostic body", intent.getStringExtra(Intent.EXTRA_TEXT))
         assertEquals(Uri.fromFile(archive), intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM))
         assertTrue(intent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
@@ -239,7 +239,7 @@ class AnalysisReportServiceTest {
 
         assertTrue(body.contains("diag-body"))
         assertTrue(body.contains("meal-body"))
-        assertTrue(body.contains("診断ID"))
+        assertTrue(body.contains("Diagnostic ID"))
     }
 
     private fun storedContent(diagnosticId: String, mealId: String): DiagnosticReportContent =

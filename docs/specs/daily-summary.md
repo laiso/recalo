@@ -31,7 +31,7 @@
 
 - The app shall list the displayed day's meals newest first by `capturedAt`.
 - While a meal's status is `analyzing`, the app shall show the card text `Analyzing meal` and `Nutrition results will appear when the analysis is complete.` and shall not open the detail screen when tapped.
-- While a meal's status is `error`, the app shall show the failure presentation defined in `meal-analysis.md` and shall not open the detail screen when tapped.
+- While a meal's status is `error`, the app shall show the failure presentation defined in `meal-analysis.md` and shall not open the detail screen when tapped. The card shall offer confirmation-based deletion even when retry is unavailable.
 - When the displayed day has no meals and the day is today, the app shall show `No Meals Yet` with `Tap the + button to capture your food and let AI do the rest.`
 - When the displayed day has no meals and the day is not today, the app shall show `No Data Found` with `There are no meal records for this specific date.`
 - While no OpenAI key is stored, the app shall show the banner `OpenAI API key is not configured. Tap to set up.` that opens the settings dialog, in every screen state.

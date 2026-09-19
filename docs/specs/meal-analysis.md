@@ -49,6 +49,14 @@ diagnostic retention rules. Reporting a completed all-zero meal remains supporte
 - While a meal's status is `error`, the app shall keep the meal image available for fullscreen preview.
 - When the stored code is retryable, the app shall offer `Try again` on the card.
 
+### Delete a failed meal
+
+- Every error card shall offer `Delete`, including non-retryable failures.
+- Deletion shall require a `Delete Meal` confirmation; canceling shall preserve the meal.
+- Confirming shall use the existing meal deletion path to remove the meal and its
+  associated local data, including diagnostic records, and attempt Health Connect
+  deletion when permission is available. The user shall remain on the day list.
+
 ### Retry
 
 - When the user retries, the app shall keep the original meal identifier and the stored image.
@@ -115,13 +123,22 @@ Feature: Meal analysis
     When the meal is deleted before the analysis resolves
     Then the meal and its nutrition data are removed
     And no nutrition result remains
+
+  Scenario: AT-ANALYSIS-006 — Delete a failed meal from its card
+    Given a failed meal with a retryable or non-retryable error
+    When the user taps "Delete" on the card and then "Cancel"
+    Then the meal remains stored
+    When the user taps "Delete" and confirms deletion
+    Then the meal is removed from storage and the day list
 ```
 
 ## Automation status
 
+- Instrumented: `DiagnosticReportUiTest.failedMealsCanBeDeletedAfterConfirmation` covers cancellation and deletion for retryable and non-retryable errors.
+
 - Automated by JVM tests: the error-code mapping for 401, 404, 429, and 503 and for a missing image (`AnalysisErrorCodeTest`); the failure card presentation, the retry reusing the same meal id, exactly two requests, and the missing-image retry making no request (`AnalysisFailureE2ETest`); the fallback request count and 403 handling and the diagnostic recording of a 500 (`MealRepositoryDiagnosticsTest`); atomic replacement and the single-claim retry (`MealDaoTest`).
 - Manual, device required: `AT-ANALYSIS-002` as a whole cannot be checked automatically, because the fallback notice and the settings link are UI-only and no test asserts the `needsModelUpdateNotice` flag.
-- Not covered by any test: the `AUTH_INVALID` and `RATE_LIMITED` card rendering, the status colours, and every path that needs an actually inaccessible model on a real account.
+- Not covered by any test: the `RATE_LIMITED` card rendering, the status colours, and every path that needs an actually inaccessible model on a real account.
 
 ## Known deviations
 
