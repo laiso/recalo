@@ -105,7 +105,33 @@ Classify HTTP failures, malformed/missing data, explicit zeros, and valid result
 separately. Correctness also requires retaining all food, not just positive
 calories.
 
-## Proposed fix sequence
+## Current disposition (2026-09-19)
+
+[Decision 0018](../../.agents/skills/recalo-decisions/references/0018-defer-reanalysis-until-failure-evidence.md)
+defers completed-meal re-analysis pending review of failure evidence. The
+maintainer's observation that the same image frequently returns zero is not
+contradicted by the screenshot API checks: those checks did not establish that
+they submitted the original failing bytes. Neither is proof of an app-side or
+provider-side cause.
+
+First collect an existing diagnostic ZIP from an affected meal and compare the
+sent image, raw response, parsed values, and saved values. Historical meals may
+lack the original response; record that gap rather than reconstructing it.
+Compare a confirmed failing input with a successful crop before selecting an
+image transformation. Positive calories alone do not prove correct recognition.
+
+Photo re-selection with a user-prepared crop is a candidate recovery operation,
+not an implemented capability. If implemented, it must preserve the existing
+meal on failure. Diagnostic retention and reporting for that attempt are a
+separate open decision, not implied by preserving the meal. Current error-only
+retry and diagnostic report behavior remain unchanged.
+
+## Historical proposed fix sequence (not approved)
+
+The following proposals are retained as investigation history. Step 4 was
+rejected by [decision 0016](../../.agents/skills/recalo-decisions/references/0016-do-not-retain-original-images.md).
+The remaining items require evidence and a separate implementation decision;
+they are not a delivery checklist.
 
 1. Validate required numeric fields before deserialization can silently fill
    them with zeros. Reuse validation for both the primary and fallback model
