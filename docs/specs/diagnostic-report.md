@@ -22,9 +22,9 @@ diagnostic retention rules. Reporting a completed all-zero meal remains supporte
 
 ### Action
 
-- While a meal is reportable, the app shall show the action `問題を報告` with the notice `解析に使用した写真と診断データを添付します` on the day-list card and on the result screen.
+- While a meal is reportable, the app shall show the action `Report a problem` with the notice `Attaches the photo used for analysis and diagnostic data` on the day-list card and on the result screen.
 - The app shall not show the action on the meal detail screen.
-- While a report is being prepared for a meal, the app shall show `診断データを作成しています…`, disable the action, and ignore further taps for that meal.
+- While a report is being prepared for a meal, the app shall show `Preparing diagnostic report…`, disable the action, and ignore further taps for that meal.
 - The app shall never report to the user that a report has been sent; opening the mail composer is not sending.
 
 ### Archive
@@ -42,12 +42,12 @@ diagnostic retention rules. Reporting a completed all-zero meal remains supporte
 ### Share
 
 - When the archive is built, the app shall open the Android share chooser with an `ACTION_SEND` intent of type `application/zip`.
-- The intent shall set the recipient `support@lai.so`, the subject `Recalo 食事解析の問題報告`, a body containing the diagnostic identifier, meal identifier, and analysis time, and the archive as a `content://` FileProvider URI.
+- The intent shall set the recipient `support@lai.so`, the subject `Recalo meal analysis problem report`, a body containing the diagnostic identifier, meal identifier, and analysis time, and the archive as a `content://` FileProvider URI.
 - The app shall grant read permission on the archive URI for that share only.
 - The app shall not restrict the share to a specific package.
-- If no app can handle the intent, then the app shall show `共有できるメールアプリが見つかりませんでした。`
-- If opening the share target fails for any other reason, then the app shall show `メールアプリを開けませんでした。時間をおいて再度お試しください。`
-- If preparing the report source fails, then the app shall show `診断データの作成に失敗しました。時間をおいて再度お試しください。`
+- If no app can handle the intent, then the app shall show `No app is available to share the report.`
+- If opening the share target fails for any other reason, then the app shall show `Could not open the sharing app. Please try again later.`
+- If preparing the report source fails, then the app shall show `Could not prepare the diagnostic report. Please try again later.`
 - The app shall show report errors on the meal card that produced them, and shall clear the previous error when a new report starts.
 
 ### Retention
@@ -77,18 +77,18 @@ Feature: Diagnostic report
 
   Scenario: AT-REPORT-001 — Report a failed analysis through the share sheet
     Given a meal whose status is error
-    When the user taps "問題を報告"
+    When the user taps "Report a problem"
     Then the archive "Recalo-diagnostic-<id>.zip" is built in the cache directory
     And it contains report.json, request.json, response.json, values.json, and image.jpg
     And the share chooser opens for application/zip
     And the recipient is support@lai.so
-    And the subject is "Recalo 食事解析の問題報告"
+    And the subject is "Recalo meal analysis problem report"
     And control of sending remains with the user
 
   Scenario: AT-REPORT-002 — Report an all-zero completed meal
     Given a meal whose status is completed with every value zero
     Then the meal is reportable
-    And the action "問題を報告" is offered on its card
+    And the action "Report a problem" is offered on its card
 
   Scenario: AT-REPORT-003 — A valid result is not reportable
     Given a meal whose status is completed with at least one non-zero value
@@ -99,7 +99,7 @@ Feature: Diagnostic report
   Scenario: AT-REPORT-004 — No mail application
     Given no installed app can handle the share intent
     When the user reports a meal
-    Then the card shows "共有できるメールアプリが見つかりませんでした。"
+    Then the card shows "No app is available to share the report."
 
   Scenario: AT-REPORT-005 — Retention
     Given more than 20 diagnostic records exist for the device
@@ -141,11 +141,11 @@ Feature: Diagnostic report
 - Automated by JVM tests: the reportability rules including all-zero, partial zero, missing values, and the states that are never reportable (`AnalysisReportabilityTest`); retention by count and age, deletion by meal, report-time values, and a save failure (`AnalysisDiagnosticsStoreTest`); archive entries, model and HTTP details, the legacy note, and secret redaction (`DiagnosticReportZipBuilderTest`); the share intent, chooser, FileProvider URI, no-mail-app error, and the legacy, expired, and missing-image paths (`AnalysisReportServiceTest`); key redaction and retry isolation end to end (`MealRepositoryDiagnosticsTest`).
 - Automated by instrumented tests only, device required, never run in CI (decision 0012): the real share sheet opening with the archive name visible, driven through the app (`DiagnosticReportUiTest`).
 - Manual, device required: `AT-REPORT-009`. The maintainer documented the real mail app check as a manual step, because no test asserts that a specific mail client prefills the recipient, subject, and body or can read the attachment.
-- Not covered by any test: the report button rendering on the result screen and the day-list card as a user-visible flow, and the `診断データを作成しています…` progress state.
+- Not covered by any test: the report button rendering on the result screen and the day-list card as a user-visible flow, and the `Preparing diagnostic report…` progress state.
 
 ## Known deviations
 
-- A ZIP build failure inside `prepareAndShare` surfaces the raw builder exception message, such as `Failed to create report cache directory`, instead of the localized `診断データの作成に失敗しました。時間をおいて再度お試しください。`
+- A ZIP build failure inside `prepareAndShare` surfaces the raw builder exception message, such as `Failed to create report cache directory`, instead of the localized `Could not prepare the diagnostic report. Please try again later.`
 - `createReportZip` maps every failure to the localized message, but production never calls it; only tests do.
 - `clearReportError` has no callers, so an error clears only when another report starts.
 - `report.json` exists per attempt and `meta.json` is written to the source directory but is deliberately not included in the archive; nothing documents that omission for a reader of the archive alone.

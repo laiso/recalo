@@ -776,6 +776,14 @@ fun HomeScreen(
                                     viewModel.currentScreenState = ScreenState.DETAIL
                                 },
                                 onRetryClick = { mealId -> viewModel.retryAnalysis(mealId) },
+                                onDeleteClick = { mealId ->
+                                    viewModel.deleteMeal(
+                                        mealId,
+                                        viewModel.healthConnectManager.takeIf {
+                                            viewModel.hasHealthConnectPermissions == true
+                                        }
+                                    )
+                                },
                                 onReportClick = { meal -> viewModel.reportAnalysisIssue(meal) },
                                 reportPreparationMealId = viewModel.reportPreparationMealId,
                                 reportErrorMessage = viewModel.reportErrorMessage,
@@ -1267,6 +1275,7 @@ private fun IdleScreen(
     onNextDayClick: () -> Unit,
     onMealClick: (MealWithNutrition) -> Unit,
     onRetryClick: (String) -> Unit,
+    onDeleteClick: (String) -> Unit,
     onReportClick: (MealWithNutrition) -> Unit,
     reportPreparationMealId: String?,
     reportErrorMessage: String?,
@@ -1516,11 +1525,12 @@ private fun IdleScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(bottom = 80.dp)
             ) {
-                items(targetMeals) { mealWithNutrition ->
+                items(targetMeals, key = { it.meal.id }) { mealWithNutrition ->
                     MealCard(
                         mealWithNutrition = mealWithNutrition,
                         onClick = { onMealClick(mealWithNutrition) },
                         onRetry = { onRetryClick(mealWithNutrition.meal.id) },
+                        onDelete = { onDeleteClick(mealWithNutrition.meal.id) },
                         onReport = { onReportClick(mealWithNutrition) },
                         isPreparingReport = reportPreparationMealId == mealWithNutrition.meal.id,
                         reportErrorMessage = reportErrorMessage
@@ -1660,11 +1670,13 @@ private fun MealCard(
     mealWithNutrition: MealWithNutrition,
     onClick: () -> Unit,
     onRetry: () -> Unit,
+    onDelete: () -> Unit,
     onReport: () -> Unit = {},
     isPreparingReport: Boolean = false,
     reportErrorMessage: String? = null
 ) {
     var showFullscreenImage by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember(mealWithNutrition.meal.id) { mutableStateOf(false) }
     val meal = mealWithNutrition.meal
     val nutrition = mealWithNutrition.nutritionResult
     val errorPresentation = mealWithNutrition.analysisErrorPresentation()
@@ -1744,6 +1756,12 @@ private fun MealCard(
                             Text("Try again")
                         }
                     }
+                    TextButton(
+                        onClick = { showDeleteConfirm = true },
+                        modifier = Modifier.testTag("analysis_delete_button")
+                    ) {
+                        Text("Delete", color = MaterialTheme.colorScheme.error)
+                    }
                     if (isReportable) {
                         AnalysisReportAction(
                             isPreparingReport = isPreparingReport,
@@ -1809,6 +1827,38 @@ private fun MealCard(
         }
     }
 
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete Meal") },
+            text = {
+                Text(
+                    "Are you sure you want to delete this meal? " +
+                        "It will also be removed from Health Connect."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteConfirm = false
+                        onDelete()
+                    },
+                    modifier = Modifier.testTag("analysis_delete_confirm"),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     if (showFullscreenImage && meal.imagePath != null) {
         MealImageFullscreenDialog(
             imagePath = meal.imagePath,
@@ -1836,10 +1886,10 @@ private fun AnalysisReportAction(
                 modifier = Modifier.size(18.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
-            Text(if (isPreparingReport) "診断データを作成しています…" else "問題を報告")
+            Text(if (isPreparingReport) "Preparing diagnostic report…" else "Report a problem")
         }
         Text(
-            text = "解析に使用した写真と診断データを添付します",
+            text = "Attaches the photo used for analysis and diagnostic data",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.testTag("analysis_report_notice")

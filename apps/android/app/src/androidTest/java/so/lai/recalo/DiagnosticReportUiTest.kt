@@ -3,9 +3,12 @@ package so.lai.recalo
 import android.graphics.Bitmap
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -35,6 +38,47 @@ class DiagnosticReportUiTest {
 
     @Test
     fun allZeroMealCanShareDiagnosticAttachment() = verifyReportFlow(completed = true)
+
+    @Test
+    fun failedMealsCanBeDeletedAfterConfirmation() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val dao = CaroliDatabase.getDatabase(context).mealDao()
+        listOf("SERVICE_UNAVAILABLE", "AUTH_INVALID").forEach { error ->
+            val id = "delete-ui-${UUID.randomUUID()}"
+            try {
+                runBlocking {
+                    dao.insertMeal(
+                        MealLogEntity(
+                            id = id,
+                            imageUrl = null,
+                            imagePath = null,
+                            capturedAt = System.currentTimeMillis(),
+                            analysisStatus = "error",
+                            analysisError = error
+                        )
+                    )
+                }
+                compose.waitUntil(15_000) {
+                    compose.onAllNodesWithTag("analysis_delete_button")
+                        .fetchSemanticsNodes().isNotEmpty()
+                }
+                compose.onNodeWithText("Report a problem").assertIsDisplayed()
+                compose.onNodeWithTag("analysis_delete_button").performClick()
+                compose.onNodeWithText("Cancel").performClick()
+                runBlocking { assertNotNull(dao.getMealWithNutritionById(id)) }
+                compose.onNodeWithTag("analysis_delete_button").performClick()
+                compose.onNodeWithTag("analysis_delete_confirm").performClick()
+                compose.waitUntil(15_000) {
+                    runBlocking { dao.getMealWithNutritionById(id) == null }
+                }
+                compose.waitUntil(15_000) {
+                    compose.onAllNodesWithTag("analysis_error_card").fetchSemanticsNodes().isEmpty()
+                }
+            } finally {
+                runBlocking { dao.deleteMealById(id) }
+            }
+        }
+    }
 
     private fun verifyReportFlow(completed: Boolean) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()

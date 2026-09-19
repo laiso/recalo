@@ -32,7 +32,7 @@ class OpenAiService(
 ) : NutritionAnalyzer {
     private val trimmedApiKey = apiKey.trim()
     private val client = OkHttpClient.Builder()
-        .connectTimeout(timeoutSeconds, TimeUnit.SECONDS)
+        .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(timeoutSeconds, TimeUnit.SECONDS)
         .writeTimeout(timeoutSeconds, TimeUnit.SECONDS)
         .build()
@@ -96,7 +96,10 @@ class OpenAiService(
                     settings = mapOf(
                         "endpoint" to "responses",
                         "baseUrl" to baseUrl,
-                        "timeoutSeconds" to timeoutSeconds
+                        "timeoutSeconds" to timeoutSeconds,
+                        "connectTimeoutSeconds" to 10,
+                        "readTimeoutSeconds" to timeoutSeconds,
+                        "writeTimeoutSeconds" to timeoutSeconds
                     ),
                     imageSha256 = imageSha256
                 )

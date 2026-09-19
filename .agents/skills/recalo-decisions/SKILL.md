@@ -32,6 +32,7 @@ Read only the reference whose area overlaps the task. Do not load every decision
 | 0016 | 2026-09-18 | Accepted | [Do not retain original meal images](references/0016-do-not-retain-original-images.md) | Retaining a full-resolution copy, storing a second source file, cropping the saved image, or re-analyzing from a higher-resolution source |
 | 0017 | 2026-09-18 | Superseded by 0018 | [Save nothing when a re-analysis fails](references/0017-save-nothing-on-reanalysis-failure.md) | Changing what a failed analysis does to a meal that already has a result, or reusing the failure branch for re-analysis |
 | 0018 | 2026-09-19 | Accepted | [Defer re-analysis until failure evidence is reviewed](references/0018-defer-reanalysis-until-failure-evidence.md) | Planning recovery from all-zero completed results or deciding replacement-attempt diagnostics |
+| 0019 | 2026-09-19 | Accepted | [Use English diagnostics and allow failed-meal deletion](references/0019-english-diagnostics-and-failed-meal-deletion.md) | Changing diagnostic language or failed-meal deletion |
 
 Each reference states the context, the decision, and the consequences that are still binding. `Review target` marks an accepted decision that the maintainer intends to revisit; `known debt` marks an accepted decision that is an acknowledged oversight rather than an intent; `Proposed` marks a recommendation that is not yet binding and must not be treated as current behavior.
 

@@ -27,7 +27,7 @@ When these disagree, update the applicable specification with the implementation
 - Meal detail, header timestamp, fullscreen photo, or delete: read `docs/specs/meal-detail.md`.
 - API key entry, model quality, or credential storage: read `docs/specs/settings-and-credentials.md`.
 - Health Connect availability, permission, write, read, or delete: read `docs/specs/health-connect-sync.md`.
-- The 問題を報告 action, diagnostic archive contents, or the share sheet: read `docs/specs/diagnostic-report.md`.
+- The Report a problem action, diagnostic archive contents, or the share sheet: read `docs/specs/diagnostic-report.md`.
 - Why the API key is encrypted rather than proxied: decision 0002.
 - Why analysis has statuses and stable error codes: decision 0006.
 - Why images are compressed to a 1280 px JPEG: decision 0005.
@@ -45,7 +45,7 @@ These are routing aids, not the authoritative statement. Where a constraint belo
 - A meal row is inserted with `analysisStatus = analyzing` before the API call. Analysis failure is a persisted state, not only an exception, and retry reuses the same meal id.
 - Only the compressed JPEG is kept. No original may be retained for privacy and storage reasons (decision 0016), so reanalysis has to ask the user for a new photo; detail discarded at capture time is unrecoverable.
 - Provider secrets live in EncryptedSharedPreferences plus the Android Keystore, and plaintext fallback exists if encrypted preferences cannot be created. Nothing is sent to a server this project operates and there is no telemetry; diagnostic data leaves the device only when the user sends it.
-- User-facing strings are hardcoded in Kotlin; `strings.xml` holds only `app_name`. The UI chrome is English and the diagnostic report flow is Japanese.
+- User-facing strings are hardcoded in Kotlin; `strings.xml` holds only `app_name`. The UI chrome and diagnostic report flow are English (decision 0019).
 - Room schema changes need a new `Migration` and a database version bump. Migrations 1→2 and 2→3 exist and no test exercises them.
 - The day boundary is computed once per composition with `remember`, so a session left open across 05:00 keeps the previous "today".
 

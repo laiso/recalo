@@ -3,6 +3,8 @@
 - Status: Accepted — review target
 - Date: 2026-03-14
 
+- Diagnostic-language clauses superseded by [0019](0019-english-diagnostics-and-failed-meal-deletion.md); other decisions remain in force.
+
 ## Context
 
 Android convention is to declare user-facing text in `res/values/strings.xml` and translate it through alternative resource directories. In this repository every UI string is a Kotlin string literal instead, and `res/values/strings.xml` contains only `app_name`.

@@ -110,14 +110,14 @@ class AnalysisReportService(
     }
 
     fun buildMailBody(diagnosticId: String, mealId: String, createdAt: Long): String = """
-        Recalo の食事解析で問題が発生しました。調査のため、以下の診断データを送付します。
+        A problem occurred with meal analysis in Recalo. The following diagnostic data is attached for investigation.
 
-        診断ID: $diagnosticId
-        食事ID: $mealId
-        解析日時: ${isoLocal(createdAt)}
+        Diagnostic ID: $diagnosticId
+        Meal ID: $mealId
+        Analysis time: ${isoLocal(createdAt)}
 
-        添付のZIPには、解析に使用した写真と、リクエスト・API応答・保存値の各段階のデータが含まれています。
-        内容をご確認のうえ、そのまま送信してください。
+        The attached ZIP contains the photo used for analysis, the request, API responses, and stored values.
+        Please review the contents before sending.
     """.trimIndent()
 
     private fun isoLocal(timestamp: Long): String {
@@ -130,7 +130,7 @@ class AnalysisReportService(
         const val WORK_DIRECTORY = "work"
         const val WORK_DIRECTORY_MAX_AGE_MILLIS = 60L * 60L * 1000L
         const val BUILD_FAILED_MESSAGE =
-            "診断データの作成に失敗しました。時間をおいて再度お試しください。"
+            "Could not prepare the diagnostic report. Please try again later."
     }
 }
 

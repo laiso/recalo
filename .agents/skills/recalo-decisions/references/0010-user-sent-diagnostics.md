@@ -3,6 +3,8 @@
 - Status: Accepted
 - Date: 2026-09-18
 
+- Diagnostic-language clauses superseded by [0019](0019-english-diagnostics-and-failed-meal-deletion.md); other decisions remain in force.
+
 ## Context
 
 Users reported analyses that completed with every nutrition value at zero, and there was no way to tell whether the zeros came from the provider response, the read, or the save. Reproducing it against the live API did not work: repeated requests with the same photo returned non-zero values (see `docs/investigations/all-zero-analysis-investigation.md`).

@@ -253,3 +253,25 @@ act -v
 4. Test naming convention
    - `Feature_Condition_ExpectedResult` format
    - Example: `updatePortionRatio_shouldScaleItemCalories`
+
+## Install on a connected Android target
+
+Run from the repository root:
+
+```bash
+make install           # First connected target in adb order
+make install-device    # First physical device (USB or wireless)
+make install-emulator  # First emulator
+make install-wireless  # First wireless debugging device discovered by mDNS
+```
+
+These tasks install the existing
+`apps/android/app/build/outputs/apk/dev/debug/app-dev-debug.apk` with
+`adb install -r`, preserving app data. They do not build the APK. Build first
+with `cd apps/android && ./gradlew assembleDevDebug` when needed.
+
+Only entries in the `device` state are eligible; offline and unauthorized
+entries are skipped. If several targets match, the first in `adb devices`
+order is selected, and its identifier is printed before installation. That order
+is not a persistent preference. The task stops if no target matches.
+`adb` must be on `PATH`.

@@ -67,11 +67,11 @@ class DiagnosticReportSharer(
         const val FILE_PROVIDER_SUFFIX = ".fileprovider"
         const val ARCHIVE_MIME_TYPE = "application/zip"
         const val RECIPIENT = "support@lai.so"
-        const val SUBJECT = "Recalo 食事解析の問題報告"
+        const val SUBJECT = "Recalo meal analysis problem report"
         const val SHARE_UNAVAILABLE_MESSAGE =
-            "共有できるメールアプリが見つかりませんでした。"
+            "No app is available to share the report."
         const val SHARE_FAILED_MESSAGE =
-            "メールアプリを開けませんでした。時間をおいて再度お試しください。"
+            "Could not open the sharing app. Please try again later."
     }
 }
 
