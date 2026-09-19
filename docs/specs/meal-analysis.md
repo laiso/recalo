@@ -18,6 +18,15 @@ diagnostic retention rules. Reporting a completed all-zero meal remains supporte
 - If the image cannot be saved before the meal row is created, then the app shall fail without creating a failed meal card.
 - The app shall not display a failed analysis as a valid `0 kcal` result.
 
+### Network timeouts
+
+- The provider client shall use a 10-second connection timeout and 60-second
+  read and write timeouts. These are per-operation limits, not a deadline for
+  the complete analysis; connection retries can extend the total wait.
+- Diagnostic request settings shall record the connection, read, and write
+  timeouts separately. The legacy `timeoutSeconds` field remains the read/write
+  timeout for compatibility.
+
 ### Failure classification
 
 - The app shall store exactly one of the following codes in `analysisError`, and shall store no raw provider response, HTTP status, exception class name, or stack trace.
